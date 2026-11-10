@@ -1,0 +1,36 @@
+[package]
+name = "beamforge"
+version = "1.0.0"
+description = "BeamForge - free laser design and control software"
+edition = "2024"
+
+[dependencies]
+rfd = "0.18"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+serialport = "4"
+ttf-parser = "0.25"
+usvg = "0.49"
+eframe = { version = "0.37", features = ["glow"] }
+epaint_default_fonts = "0.37"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "ico", "gif", "tiff", "tga", "webp"] }
+muda = "0.21.2"
+sys-locale = "0.3.2"
+i_overlay = "9.1.0"
+roxmltree = "0.21"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSData"] }
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSImage"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[build-dependencies]
+winresource = "0.1"

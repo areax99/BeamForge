@@ -1,0 +1,12 @@
+/target
+/build-release.local.py
+/release-archives/
+.DS_Store
+/dist/
+/COMPILARE.md
+/MECHANICS.md
+/mechanics.json
+/shots/
+/tools/ocr.swift
+/app/
+/scripts/package-local.sh

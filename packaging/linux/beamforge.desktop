@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=BeamForge
+GenericName=Laser design and control
+Comment=Free laser design and control software
+Exec=beamforge %f
+Icon=beamforge
+Terminal=false
+Categories=Graphics;Engineering;
+MimeType=application/x-beamforge;image/svg+xml;

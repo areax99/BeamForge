@@ -64,6 +64,8 @@ done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/BeamForgeDocument.icns"
 rm -rf "$ICONSET"
 
+cp LICENSE NOTICE "$APP/Contents/Resources/"
+
 # 4. Info.plist: name, icon, version, and .beamforge files open with BeamForge
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

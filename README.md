@@ -35,6 +35,10 @@ Always check the preview, work area, speed, and power before running a job. Use 
 
 LightBurn is a trademark of its respective owner. BeamForge is not affiliated with or endorsed by LightBurn.
 
+### License
+
+Copyright 2026 servimmagine. BeamForge is licensed under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). Third-party components remain subject to their respective licenses.
+
 ---
 
 ## Italiano
@@ -65,6 +69,10 @@ BeamForge è in fase beta. Le funzionalità possono cambiare, possono verificars
 Controllare sempre anteprima, area di lavoro, velocità e potenza prima di avviare un lavoro. Utilizzare protezioni oculari e ventilazione adeguate, seguire le istruzioni di sicurezza della macchina e non lasciare mai il laser in funzione incustodito.
 
 LightBurn è un marchio del rispettivo titolare. BeamForge non è affiliato a LightBurn né approvato da quest'ultimo.
+
+### Licenza
+
+Copyright 2026 servimmagine. BeamForge è distribuito con la [licenza Apache 2.0](LICENSE); vedere anche [NOTICE](NOTICE). I componenti di terze parti restano soggetti alle rispettive licenze.
 
 ---
 
@@ -97,6 +105,10 @@ Comprueba siempre la vista previa, el área de trabajo, la velocidad y la potenc
 
 LightBurn es una marca de su respectivo titular. BeamForge no está afiliado a LightBurn ni cuenta con su aprobación.
 
+### Licencia
+
+Copyright 2026 servimmagine. BeamForge se distribuye bajo la [licencia Apache 2.0](LICENSE); consulta también [NOTICE](NOTICE). Los componentes de terceros siguen sujetos a sus respectivas licencias.
+
 ---
 
 ## Français
@@ -128,6 +140,10 @@ Vérifiez toujours l'aperçu, la zone de travail, la vitesse et la puissance ava
 
 LightBurn est une marque de son titulaire respectif. BeamForge n'est ni affilié à LightBurn ni approuvé par celui-ci.
 
+### Licence
+
+Copyright 2026 servimmagine. BeamForge est distribué sous la [licence Apache 2.0](LICENSE) ; voir également [NOTICE](NOTICE). Les composants tiers restent soumis à leurs licences respectives.
+
 ---
 
 ## Deutsch
@@ -158,3 +174,7 @@ BeamForge befindet sich in der Betaphase. Funktionen können sich ändern, Fehle
 Prüfen Sie vor jedem Auftrag die Vorschau, den Arbeitsbereich, die Geschwindigkeit und die Leistung. Verwenden Sie geeigneten Augenschutz und eine ausreichende Belüftung, beachten Sie die Sicherheitshinweise Ihrer Maschine und lassen Sie einen laufenden Laser niemals unbeaufsichtigt.
 
 LightBurn ist eine Marke des jeweiligen Inhabers. BeamForge ist nicht mit LightBurn verbunden und wird nicht von LightBurn empfohlen.
+
+### Lizenz
+
+Copyright 2026 servimmagine. BeamForge steht unter der [Apache-Lizenz 2.0](LICENSE); siehe auch [NOTICE](NOTICE). Komponenten Dritter unterliegen weiterhin ihren jeweiligen Lizenzen.

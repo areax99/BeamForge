@@ -1,5 +1,11 @@
 # BeamForge
 
+<p align="center">
+  <img src="assets/beamforge-overview.png" alt="BeamForge interface with the drawing canvas, layer palette, cutting settings, and laser controls" width="100%">
+  <br>
+  <em>BeamForge workspace: drawing canvas, layer palette, cutting settings, and laser controls.</em>
+</p>
+
 **Beta**
 
 [English](#english) · [Italiano](#italiano) · [Español](#español) · [Français](#français) · [Deutsch](#deutsch)
@@ -24,6 +30,12 @@ Developed in **Rust**.
 - **Laser control:** serial connection to GRBL, GRBL-M3, and grblHAL controllers; device discovery, manual configuration, jogging, framing, and job start, pause, and stop.
 - **Calibration tools:** material test grids and scan interval tests.
 - **Languages:** English, Italian, Spanish, French, and German.
+
+### Typical workflow
+
+1. Create a design with the drawing tools or import an existing file.
+2. Organize shapes into layers and set the cutting or engraving parameters for each layer.
+3. Preview the toolpaths and estimated job time; then connect a compatible laser to frame or run the job.
 
 ### Beta status and compatibility
 
@@ -60,6 +72,12 @@ Sviluppata in **Rust**.
 - **Strumenti di calibrazione:** griglie di test dei materiali e test dell'intervallo di scansione.
 - **Lingue:** inglese, italiano, spagnolo, francese e tedesco.
 
+### Flusso di lavoro tipico
+
+1. Crea un disegno con gli strumenti grafici oppure importa un file esistente.
+2. Organizza le forme nei livelli e imposta i parametri di taglio o incisione per ciascun livello.
+3. Controlla i percorsi e la stima dei tempi nell'anteprima; poi collega un laser compatibile per inquadrare o avviare il lavoro.
+
 ### Stato beta e compatibilità
 
 BeamForge è in fase beta. Le funzionalità possono cambiare, possono verificarsi errori e l'importazione potrebbe non conservare tutti gli elementi o le impostazioni. Non è garantita la piena compatibilità con i progetti, le funzionalità o l'hardware supportati da LightBurn. I tempi di lavorazione sono indicativi.
@@ -94,6 +112,12 @@ Desarrollada en **Rust**.
 - **Control del láser:** conexión serie con controladores GRBL, GRBL-M3 y grblHAL; búsqueda de dispositivos, configuración manual, movimientos manuales, encuadre e inicio, pausa y detención del trabajo.
 - **Herramientas de calibración:** cuadrículas de prueba de materiales y pruebas del intervalo de barrido.
 - **Idiomas:** inglés, italiano, español, francés y alemán.
+
+### Flujo de trabajo habitual
+
+1. Crea un diseño con las herramientas de dibujo o importa un archivo existente.
+2. Organiza las formas en capas y configura los parámetros de corte o grabado de cada capa.
+3. Revisa las trayectorias y el tiempo estimado en la vista previa; después, conecta un láser compatible para encuadrar o ejecutar el trabajo.
 
 ### Estado beta y compatibilidad
 
@@ -130,6 +154,12 @@ Développée en **Rust**.
 - **Outils de calibrage :** grilles de test des matériaux et tests de l'intervalle de balayage.
 - **Langues :** anglais, italien, espagnol, français et allemand.
 
+### Flux de travail type
+
+1. Créez un dessin avec les outils de dessin ou importez un fichier existant.
+2. Organisez les formes en calques et définissez les paramètres de découpe ou de gravure de chaque calque.
+3. Vérifiez les parcours et la durée estimée dans l'aperçu, puis connectez un laser compatible pour cadrer ou lancer le travail.
+
 ### Version bêta et compatibilité
 
 BeamForge est en version bêta. Les fonctionnalités peuvent évoluer, des erreurs peuvent survenir et l'importation peut ne pas conserver tous les éléments ou réglages. La compatibilité complète avec les projets, les fonctionnalités ou le matériel pris en charge par LightBurn n'est pas garantie. Les temps de traitement sont des estimations.
@@ -164,6 +194,12 @@ Entwickelt in **Rust**.
 - **Lasersteuerung:** serielle Verbindung zu GRBL-, GRBL-M3- und grblHAL-Controllern; Gerätesuche, manuelle Einrichtung, manuelle Verfahrbewegungen, Rahmenfahrt sowie Start, Pause und Stopp des Auftrags.
 - **Kalibrierwerkzeuge:** Materialtestraster und Scanintervalltests.
 - **Sprachen:** Englisch, Italienisch, Spanisch, Französisch und Deutsch.
+
+### Typischer Arbeitsablauf
+
+1. Erstellen Sie einen Entwurf mit den Zeichenwerkzeugen oder importieren Sie eine vorhandene Datei.
+2. Ordnen Sie die Formen Ebenen zu und legen Sie die Schneid- oder Gravurparameter für jede Ebene fest.
+3. Prüfen Sie Werkzeugwege und geschätzte Bearbeitungszeit in der Vorschau. Verbinden Sie anschließend einen kompatiblen Laser, um den Auftrag einzurahmen oder auszuführen.
 
 ### Betastatus und Kompatibilität
 

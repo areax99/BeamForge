@@ -25,10 +25,32 @@ pub fn layer_color(i: usize) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
-/// Colour used to draw a layer on the dark canvas (layer 00 is black, so it is drawn light).
+/// Colour used to draw a layer on the canvas (layer 00 is black: drawn light on the dark theme).
 pub fn display_color(i: usize) -> Color32 {
     // test cells (past the palette) are made with the 00 material setting
-    if i == 0 || i >= LAYER_COUNT { Color32::from_rgb(235, 236, 240) } else { layer_color(i) }
+    if i == 0 || i >= LAYER_COUNT { crate::theme::p().layer0 } else { layer_color(i) }
+}
+
+/// Light theme small-square rule from the original (EditWindow::drawGrid 0x1009fd344, light branch):
+/// small squares are hidden while a big square is at most 80 px wide on screen; above that their grey
+/// fades from 248 (GRID_MINOR_BASE) towards halfway to the big-square grey 224 (GridShade default,
+/// Preferences ctor 0x10098b514), reached when t = (px - 60) / 120 = 1. The dark theme keeps its colour.
+pub const GRID_MINOR_HIDE_PX: f32 = 80.0;
+pub const GRID_FADE_START_PX: f32 = 60.0;
+pub const GRID_FADE_RANGE_PX: f32 = 120.0;
+pub const GRID_MINOR_BASE: f32 = 248.0;
+pub const GRID_SHADE: f32 = 224.0;
+
+fn minor_grid_color(major_px: f32) -> Option<Color32> {
+    if !crate::theme::p().light {
+        return Some(crate::theme::p().grid_minor);
+    }
+    if major_px <= GRID_MINOR_HIDE_PX {
+        return None;
+    }
+    let t = ((major_px - GRID_FADE_START_PX) / GRID_FADE_RANGE_PX).min(1.0);
+    let full = (GRID_MINOR_BASE + GRID_SHADE) / 2.0;
+    Some(Color32::from_gray((GRID_MINOR_BASE + (full - GRID_MINOR_BASE) * t).round() as u8))
 }
 
 fn nice_step(zoom: f32) -> f64 {
@@ -624,25 +646,30 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
     }
 
     // ---------- drawing ----------
-    painter.rect_filled(area, 0.0, crate::theme::CANVAS_OUT);
+    painter.rect_filled(area, 0.0, crate::theme::p().canvas_out);
     let d = &app.doc.device;
     let ws = Rect::from_two_pos(xf.to_screen([0.0, 0.0]), xf.to_screen([d.width, d.height]));
-    painter.rect_filled(ws, 0.0, crate::theme::CANVAS_WS);
+    painter.rect_filled(ws, 0.0, crate::theme::p().canvas_ws);
     // grid
     let step = nice_step(app.view.zoom).max(10.0);
     let major = step * 10.0;
+    let minor_color = minor_grid_color((major as f32) * app.view.zoom);
     let mut x = 0.0;
     while x <= d.width + 1e-6 {
         let is_major = (x / major).fract().abs() < 1e-9;
-        let c = if is_major { crate::theme::GRID_MAJOR } else { crate::theme::GRID_MINOR };
-        painter.line_segment([xf.to_screen([x, 0.0]), xf.to_screen([x, d.height])], Stroke::new(1.0, c));
+        let c = if is_major { Some(crate::theme::p().grid_major) } else { minor_color };
+        if let Some(c) = c {
+            painter.line_segment([xf.to_screen([x, 0.0]), xf.to_screen([x, d.height])], Stroke::new(1.0, c));
+        }
         x += step;
     }
     let mut y = 0.0;
     while y <= d.height + 1e-6 {
         let is_major = (y / major).fract().abs() < 1e-9;
-        let c = if is_major { crate::theme::GRID_MAJOR } else { crate::theme::GRID_MINOR };
-        painter.line_segment([xf.to_screen([0.0, y]), xf.to_screen([d.width, y])], Stroke::new(1.0, c));
+        let c = if is_major { Some(crate::theme::p().grid_major) } else { minor_color };
+        if let Some(c) = c {
+            painter.line_segment([xf.to_screen([0.0, y]), xf.to_screen([d.width, y])], Stroke::new(1.0, c));
+        }
         y += step;
     }
     painter.rect_stroke(ws, 0.0, Stroke::new(1.0, Color32::from_rgb(90, 96, 108)), StrokeKind::Outside);
@@ -728,7 +755,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
             let (wa, wb) = drag_box(*start, cur, square_held(&mods), mods.command);
             let (a, b) = (xf.to_screen(wa), xf.to_screen(wb));
             let hint = if square_held(&mods) { crate::i18n::tr("Rapporto 1:1") } else { crate::i18n::tr("Option: rapporto 1:1 · Cmd: dal centro") };
-            painter.text(b + vec2(14.0, 14.0), egui::Align2::LEFT_TOP, hint, egui::FontId::proportional(11.0), crate::theme::TEXT_DIM);
+            painter.text(b + vec2(14.0, 14.0), egui::Align2::LEFT_TOP, hint, egui::FontId::proportional(11.0), crate::theme::p().text_dim);
             match app.tool {
                 Tool::Rect => {
                     painter.rect_stroke(Rect::from_two_pos(a, b), 0.0, Stroke::new(1.0, accent), StrokeKind::Middle);
@@ -815,10 +842,10 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
     // ---------- rulers ----------
     let top = Rect::from_min_max(full.min, pos2(full.max.x, full.min.y + RULER));
     let left = Rect::from_min_max(full.min, pos2(full.min.x + RULER, full.max.y));
-    let rbg = Color32::from_rgb(30, 32, 37);
+    let rbg = crate::theme::p().ruler_bg;
     painter.rect_filled(top, 0.0, rbg);
     painter.rect_filled(left, 0.0, rbg);
-    let tick = Color32::from_rgb(140, 146, 158);
+    let tick = crate::theme::p().ruler_tick;
     let font = egui::FontId::proportional(9.0);
     let lstep = nice_step(app.view.zoom * 0.2).max(1.0);
     let w0 = xf.to_world(pos2(area.min.x, area.max.y));
@@ -850,7 +877,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
         painter.line_segment([pos2(h.x, top.min.y), pos2(h.x, top.max.y)], Stroke::new(1.0, c));
         painter.line_segment([pos2(left.min.x, h.y), pos2(left.max.x, h.y)], Stroke::new(1.0, c));
     }
-    painter.rect_filled(Rect::from_min_size(full.min, Vec2::splat(RULER)), 0.0, Color32::from_rgb(24, 26, 30));
+    painter.rect_filled(Rect::from_min_size(full.min, Vec2::splat(RULER)), 0.0, crate::theme::p().ruler_corner);
     painter.text(full.min + vec2(3.0, 4.0), egui::Align2::LEFT_TOP, "mm", font, tick);
 
     // cursor shape

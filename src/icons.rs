@@ -1,7 +1,6 @@
 //! Small line icons drawn with the painter, in the same thin white style as the toolbar
 //! (no colour emoji from the font).
 
-use crate::theme::TEXT;
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 
 /// Same line width as the toolbar icons (TB_ICON_STROKE in panels.rs).
@@ -159,7 +158,7 @@ pub fn text_button(ui: &mut egui::Ui, ic: Ic, text: &str, size: egui::Vec2, fill
         };
         let p = ui.painter();
         p.rect(rect, v.corner_radius, bg, v.bg_stroke, StrokeKind::Inside);
-        let color = if resp.is_pointer_button_down_on() { Color32::from_gray(200) } else { TEXT };
+        let color = if fill.is_some() { Color32::WHITE } else if resp.is_pointer_button_down_on() { crate::theme::p().text_dim } else { crate::theme::p().text };
         let font = egui::FontId::proportional(14.0);
         let galley = (!text.is_empty()).then(|| ui.painter().layout_no_wrap(text.to_string(), font, color));
         let gap = if galley.is_some() { 6.0 } else { 0.0 };

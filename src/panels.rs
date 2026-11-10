@@ -5,7 +5,7 @@ use crate::app::{BeamForge, RightTab, Tool};
 use crate::canvas::layer_color;
 use crate::gcode::StartFrom;
 use crate::model::*;
-use crate::theme::{self, ACCENT, TEXT_DIM};
+use crate::theme::{self, ACCENT};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 
 pub fn mode_it(m: CutMode) -> &'static str {
@@ -102,7 +102,8 @@ pub fn laser_menu_rows() -> Vec<MenuRow> {
     ]
 }
 
-/// Draw a toolbar button greyed out and unclickable when its action can't run now.
+/// Draw a top-toolbar or left-tool button greyed out and unclickable when its action can't run now
+/// (same rule as the menus: MainWindow::UpdateActionsStatus 0x100c39980 disables the shared QAction).
 fn gated(app: &BeamForge, ui: &mut egui::Ui, id: &str, f: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
     let on = app.can(id);
     ui.add_enabled_ui(on, |ui| {
@@ -113,6 +114,11 @@ fn gated(app: &BeamForge, ui: &mut egui::Ui, id: &str, f: impl FnOnce(&mut egui:
     })
     .inner
         && on
+}
+
+/// Laser-panel buttons stay clickable (the person's choice): the action itself says what's missing.
+fn always(_app: &BeamForge, ui: &mut egui::Ui, _id: &str, f: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
+    f(ui)
 }
 
 /// How visible an unavailable button stays (BeamForge's choice; the original greys its Qt icons).
@@ -162,13 +168,13 @@ pub fn tool_it(t: Tool) -> &'static str {
 }
 
 fn top_frame() -> egui::Frame {
-    theme::bar_frame(theme::BG)
+    theme::bar_frame(crate::theme::p().bg)
 }
 
 // ---------------------------------------------------------------- menu
 
 pub fn menu_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
-    egui::Panel::top("menu").frame(theme::bar_frame(theme::FIELD).inner_margin(egui::Margin::symmetric(8, 3))).show(ui, |ui| {
+    egui::Panel::top("menu").frame(theme::bar_frame(crate::theme::p().field).inner_margin(egui::Margin::symmetric(8, 3))).show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.label(egui::RichText::new("BeamForge").color(ACCENT).strong().size(14.0));
             ui.add_space(8.0);
@@ -338,6 +344,10 @@ pub fn menu_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
                         app.right_tab = t;
                     }
                 }
+                ui.separator();
+                if ui.button(tr("Reimposta disposizione predefinita")).clicked() {
+                    app.reset_layout = true;
+                }
             });
             ui.menu_button(tr("Aiuto"), |ui| {
                 if ui.button(tr("Informazioni su BeamForge")).clicked() {
@@ -378,10 +388,10 @@ fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
     let (rect, resp) = ui.allocate_exact_size(vec2(30.0, 28.0), Sense::click());
     let p = ui.painter();
     if resp.hovered() {
-        p.rect_filled(rect, 4.0, theme::BTN_HOVER);
+        p.rect_filled(rect, 4.0, crate::theme::p().btn_hover);
     }
     let c = rect.center();
-    let fg = if resp.is_pointer_button_down_on() { Color32::from_rgb(200, 200, 200) } else { Color32::WHITE };
+    let fg = if resp.is_pointer_button_down_on() { crate::theme::p().text_dim } else { crate::theme::p().ink };
     let st = Stroke::new(TB_ICON_STROKE, fg);
     let q = |x: f32, y: f32| pos2(c.x + x, c.y + y);
     let path = |pts: &[[f32; 2]], closed: bool| {
@@ -584,7 +594,7 @@ pub fn main_toolbar(app: &mut BeamForge, ui: &mut egui::Ui) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (txt, col) = match &app.connected {
                     Some(p) => (format!("● {}  {}", p, app.machine_state), Color32::from_rgb(90, 210, 110)),
-                    None => (tr("○ Nessun laser collegato").to_string(), TEXT_DIM),
+                    None => (tr("○ Nessun laser collegato").to_string(), crate::theme::p().text_dim),
                 };
                 // when the toolbar is full only the status dot stays, the words move to its tooltip
                 let room = ui.available_width();
@@ -625,7 +635,7 @@ fn anchor_grid(ui: &mut egui::Ui, value: &mut usize, id: &str) -> bool {
             }
         }
         let p = ui.painter();
-        p.rect_filled(rect, 4.0, theme::FIELD);
+        p.rect_filled(rect, 4.0, crate::theme::p().field);
         for i in 0..9 {
             let c = dot(i);
             if i == *value {
@@ -634,7 +644,7 @@ fn anchor_grid(ui: &mut egui::Ui, value: &mut usize, id: &str) -> bool {
                 p.circle_filled(c, 4.5, Color32::from_rgb(120, 70, 40));
                 p.circle_stroke(c, 4.5, Stroke::new(1.0, ACCENT));
             } else {
-                p.circle_stroke(c, 4.5, Stroke::new(1.0, TEXT_DIM));
+                p.circle_stroke(c, 4.5, Stroke::new(1.0, crate::theme::p().text_dim));
             }
         }
         if resp.hovered() {
@@ -654,7 +664,7 @@ fn nb_grid(id: &str) -> egui::Grid {
 }
 
 fn nb_label(ui: &mut egui::Ui, text: &str) {
-    ui.add_sized(vec2(0.0, NB_ROW), egui::Label::new(egui::RichText::new(text).color(TEXT_DIM)));
+    ui.add_sized(vec2(0.0, NB_ROW), egui::Label::new(egui::RichText::new(text).color(crate::theme::p().text_dim)));
 }
 
 fn nb_field(ui: &mut egui::Ui, w: f32, dv: egui::DragValue<'_>) -> egui::Response {
@@ -664,7 +674,7 @@ fn nb_field(ui: &mut egui::Ui, w: f32, dv: egui::DragValue<'_>) -> egui::Respons
 pub fn numeric_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
     let frame_nr = ui.ctx().cumulative_frame_nr();
     let bar_h = NB_ROW * 2.0 + NB_GAP;
-    egui::Panel::top("numeric").frame(top_frame().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| {
+    egui::Panel::top("numeric").frame(top_frame().fill(crate::theme::p().panel).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| {
         // every group is exactly two rows tall and starts at the top, so labels and fields line up
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
@@ -837,23 +847,23 @@ pub fn numeric_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
 // ---------------------------------------------------------------- status & palette
 
 pub fn status_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
-    egui::Panel::bottom("status").frame(theme::bar_frame(theme::FIELD).inner_margin(egui::Margin::symmetric(10, 3))).show(ui, |ui| {
+    egui::Panel::bottom("status").frame(theme::bar_frame(crate::theme::p().field).inner_margin(egui::Margin::symmetric(10, 3))).show(ui, |ui| {
         ui.horizontal(|ui| {
             let pos = app.cursor_world.map(|p| format!("x: {:.2}  y: {:.2} mm", p[0], p[1])).unwrap_or_else(|| "x: –  y: – mm".into());
-            ui.label(egui::RichText::new(pos).monospace().color(TEXT_DIM));
+            ui.label(egui::RichText::new(pos).monospace().color(crate::theme::p().text_dim));
             ui.separator();
-            ui.label(egui::RichText::new(trf("{} forme · {} selezionate", &[&app.doc.shapes.len(), &app.selection.len()])).color(TEXT_DIM));
+            ui.label(egui::RichText::new(trf("{} forme · {} selezionate", &[&app.doc.shapes.len(), &app.selection.len()])).color(crate::theme::p().text_dim));
             ui.separator();
             ui.label(&app.status);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(tr("BeamForge 1.0 · software libero, nessuna licenza")).color(TEXT_DIM));
+                ui.label(egui::RichText::new(tr("BeamForge 1.0 · software libero, licenza Apache 2.0")).color(crate::theme::p().text_dim));
             });
         });
     });
 }
 
 pub fn palette_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
-    egui::Panel::bottom("palette").frame(theme::bar_frame(theme::BG).inner_margin(egui::Margin::symmetric(8, 5))).show(ui, |ui| {
+    egui::Panel::bottom("palette").frame(theme::bar_frame(crate::theme::p().bg).inner_margin(egui::Margin::symmetric(8, 5))).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
             for i in 0..LAYER_COUNT {
@@ -890,9 +900,9 @@ fn tool_button(ui: &mut egui::Ui, t: Tool, active: bool) -> egui::Response {
         p.rect_filled(rect, 6.0, Color32::from_rgb(120, 52, 18));
         p.rect_stroke(rect, 6.0, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
     } else if resp.hovered() {
-        p.rect_filled(rect, 4.0, theme::BTN_HOVER);
+        p.rect_filled(rect, 4.0, crate::theme::p().btn_hover);
     }
-    let col = if active { Color32::WHITE } else { Color32::from_rgb(210, 214, 222) };
+    let col = if active { Color32::WHITE } else { crate::theme::p().icon };
     paint_tool_icon(p, rect.center(), t, col, 1.0);
     resp.on_hover_text(tool_it(t))
 }
@@ -974,13 +984,17 @@ fn shapes_button(app: &mut BeamForge, ui: &mut egui::Ui) {
             for t in crate::app::SHAPE_TOOLS {
                 let (row, rr) = ui.allocate_exact_size(vec2(170.0, 28.0), Sense::click());
                 let p = ui.painter();
-                if t == app.tool {
+                let ink = if t == app.tool {
                     p.rect_filled(row, 4.0, Color32::from_rgb(120, 52, 18));
+                    Color32::WHITE
                 } else if rr.hovered() {
-                    p.rect_filled(row, 4.0, Color32::from_rgb(52, 56, 66));
-                }
-                paint_tool_icon(p, pos2(row.left() + 16.0, row.center().y), t, theme::TEXT, 0.75);
-                p.text(pos2(row.left() + 34.0, row.center().y), egui::Align2::LEFT_CENTER, tool_it(t), egui::FontId::proportional(14.0), theme::TEXT);
+                    p.rect_filled(row, 4.0, crate::theme::p().menu_hover);
+                    crate::theme::p().menu_hover_text
+                } else {
+                    crate::theme::p().text
+                };
+                paint_tool_icon(p, pos2(row.left() + 16.0, row.center().y), t, ink, 0.75);
+                p.text(pos2(row.left() + 34.0, row.center().y), egui::Align2::LEFT_CENTER, tool_it(t), egui::FontId::proportional(14.0), ink);
                 if rr.clicked() {
                     app.tool = t;
                     app.shape_tool = t;
@@ -1023,9 +1037,9 @@ fn combine_button_inner(app: &mut BeamForge, ui: &mut egui::Ui) {
         p.rect_filled(rect, 6.0, Color32::from_rgb(120, 52, 18));
         p.rect_stroke(rect, 6.0, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
     } else if resp.hovered() {
-        p.rect_filled(rect, 4.0, theme::BTN_HOVER);
+        p.rect_filled(rect, 4.0, crate::theme::p().btn_hover);
     }
-    paint_icon(p, rect.center(), app.combine_current, Color32::from_rgb(210, 214, 222), 1.1);
+    paint_icon(p, rect.center(), app.combine_current, crate::theme::p().icon, 1.1);
     p.add(egui::Shape::convex_polygon(vec![rect.right_bottom() + vec2(-3.0, -10.0), rect.right_bottom() + vec2(-3.0, -3.0), rect.right_bottom() + vec2(-10.0, -3.0)], ACCENT, Stroke::NONE));
     let resp = resp.on_hover_text(tr("Combina forme (2 oggetti selezionati): clicca per scegliere l'operazione"));
     let (mut open, mut hold) = (app.combine_menu_open, app.menu_hold_opened);
@@ -1050,11 +1064,14 @@ fn combine_button_inner(app: &mut BeamForge, ui: &mut egui::Ui) {
             for (op, name) in rows {
                 let (row, rr) = ui.allocate_exact_size(vec2(230.0, 28.0), Sense::click());
                 let p = ui.painter();
-                if rr.hovered() {
-                    p.rect_filled(row, 4.0, Color32::from_rgb(52, 56, 66));
-                }
-                paint_icon(p, pos2(row.left() + 16.0, row.center().y), op, theme::TEXT, 0.8);
-                p.text(pos2(row.left() + 34.0, row.center().y), egui::Align2::LEFT_CENTER, name, egui::FontId::proportional(14.0), theme::TEXT);
+                let ink = if rr.hovered() {
+                    p.rect_filled(row, 4.0, crate::theme::p().menu_hover);
+                    crate::theme::p().menu_hover_text
+                } else {
+                    crate::theme::p().text
+                };
+                paint_icon(p, pos2(row.left() + 16.0, row.center().y), op, ink, 0.8);
+                p.text(pos2(row.left() + 34.0, row.center().y), egui::Align2::LEFT_CENTER, name, egui::FontId::proportional(14.0), ink);
                 if rr.clicked() {
                     pick = Some(op);
                 }
@@ -1137,7 +1154,7 @@ fn paint_tool_icon(p: &egui::Painter, c: Pos2, t: Tool, col: Color32, k: f32) {
         }
         Tool::Tabs => {
             p.rect_stroke(Rect::from_center_size(c, vec2(18.0, 14.0) * k), 1.0, st, StrokeKind::Middle);
-            p.line_segment([o(-3.0, -7.0), o(3.0, -7.0)], Stroke::new(3.0, crate::theme::CANVAS_OUT));
+            p.line_segment([o(-3.0, -7.0), o(3.0, -7.0)], Stroke::new(3.0, crate::theme::p().canvas_out));
             p.circle_filled(o(0.0, -7.0), 2.2, ACCENT);
         }
         Tool::Triangle | Tool::Pentagon | Tool::Octagon => {
@@ -1162,10 +1179,10 @@ fn offset_icon(ui: &mut egui::Ui, active: bool, tip: &str) -> bool {
         p.rect_filled(rect, 6.0, Color32::from_rgb(120, 52, 18));
         p.rect_stroke(rect, 6.0, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
     } else if resp.hovered() {
-        p.rect_filled(rect, 4.0, theme::BTN_HOVER);
+        p.rect_filled(rect, 4.0, crate::theme::p().btn_hover);
     }
     let c = rect.center();
-    let col = if active { Color32::WHITE } else { Color32::from_rgb(210, 214, 222) };
+    let col = if active { Color32::WHITE } else { crate::theme::p().icon };
     p.rect_stroke(Rect::from_center_size(c, vec2(22.0, 18.0)), 5.0, Stroke::new(1.6, col), StrokeKind::Middle);
     let inner = Rect::from_center_size(c, vec2(12.0, 8.0));
     p.extend(egui::Shape::dashed_line(&[inner.left_top(), inner.right_top(), inner.right_bottom(), inner.left_bottom(), inner.left_top()], Stroke::new(1.3, ACCENT), 2.0, 1.5));
@@ -1192,10 +1209,10 @@ fn arrange_icon(ui: &mut egui::Ui, kind: ArrangeIcon, tip: &str) -> bool {
     let (rect, resp) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::click());
     let p = ui.painter();
     if resp.hovered() {
-        p.rect_filled(rect, 5.0, Color32::from_rgb(52, 56, 66));
+        p.rect_filled(rect, 5.0, crate::theme::p().btn_hover);
     }
     let c = rect.center();
-    let fg = Color32::from_rgb(210, 214, 222);
+    let fg = crate::theme::p().icon;
     let st = Stroke::new(1.4, fg);
     let guide = Stroke::new(1.4, ACCENT);
     let r = |x0: f32, y0: f32, x1: f32, y1: f32| Rect::from_min_max(pos2(c.x + x0, c.y + y0), pos2(c.x + x1, c.y + y1));
@@ -1359,10 +1376,10 @@ fn mirror_icon(ui: &mut egui::Ui, vertical: bool, size: egui::Vec2, tip: &str) -
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let p = ui.painter();
     if resp.hovered() {
-        p.rect_filled(rect, 4.0, theme::BTN_HOVER);
+        p.rect_filled(rect, 4.0, crate::theme::p().btn_hover);
     }
     let c = rect.center();
-    let col = Color32::from_rgb(210, 214, 222);
+    let col = crate::theme::p().icon;
     let tri = |a: [f32; 2], b: [f32; 2], d: [f32; 2], fill: Color32| {
         let m = |q: [f32; 2]| if vertical { pos2(c.x + q[1], c.y + q[0]) } else { pos2(c.x + q[0], c.y + q[1]) };
         egui::Shape::convex_polygon(vec![m(a), m(b), m(d)], fill, Stroke::new(1.2, col))
@@ -1375,7 +1392,7 @@ fn mirror_icon(ui: &mut egui::Ui, vertical: bool, size: egui::Vec2, tip: &str) -
 }
 
 pub fn tool_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
-    egui::Panel::left("tools").resizable(false).exact_size(54.0).frame(theme::bar_frame(theme::BG).inner_margin(egui::Margin::symmetric(8, 8))).show(ui, |ui| {
+    egui::Panel::left("tools").resizable(false).exact_size(54.0).frame(theme::bar_frame(crate::theme::p().bg).inner_margin(egui::Margin::symmetric(8, 8))).show(ui, |ui| {
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 4.0;
             for t in [Tool::Select, Tool::Line, Tool::Rect, Tool::Text, Tool::Measure, Tool::PositionLaser, Tool::Tabs] {
@@ -1422,8 +1439,43 @@ pub fn tool_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
 
 // ---------------------------------------------------------------- right docks
 
+/// Third-party components shown on the About page with their licences (from `cargo metadata`).
+const THIRD_PARTY: &[(&str, &str, &str)] = &[
+    ("egui / eframe", "MIT OR Apache-2.0", "https://github.com/emilk/egui"),
+    ("resvg / usvg", "Apache-2.0 OR MIT", "https://github.com/linebender/resvg"),
+    ("image", "MIT OR Apache-2.0", "https://github.com/image-rs/image"),
+    ("serialport", "MPL-2.0", "https://github.com/serialport/serialport-rs"),
+    ("ttf-parser", "MIT OR Apache-2.0", "https://github.com/harfbuzz/ttf-parser"),
+    ("iOverlay", "MIT OR Apache-2.0", "https://github.com/iShape-Rust/iOverlay"),
+    ("roxmltree", "MIT OR Apache-2.0", "https://github.com/RazrFalcon/roxmltree"),
+    ("flate2", "MIT OR Apache-2.0", "https://github.com/rust-lang/flate2-rs"),
+    ("zip", "MIT", "https://github.com/zip-rs/zip2"),
+    ("muda", "Apache-2.0 OR MIT", "https://github.com/tauri-apps/muda"),
+    ("rfd", "MIT", "https://github.com/PolyMeilex/rfd"),
+    ("serde / serde_json", "MIT OR Apache-2.0", "https://github.com/serde-rs/serde"),
+    ("sys-locale", "MIT OR Apache-2.0", "https://github.com/1Password/sys-locale"),
+    ("epaint default fonts", "(MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0", "https://github.com/emilk/egui"),
+];
+
+/// Right options panel width (px): drag its left edge between these limits.
+pub const RIGHT_WIDTH_DEFAULT: f32 = 512.0;
+pub const RIGHT_WIDTH_MIN: f32 = 380.0;
+pub const RIGHT_WIDTH_MAX: f32 = 1100.0;
+
 pub fn right_panel(app: &mut BeamForge, ui: &mut egui::Ui) {
-    egui::Panel::right("docks").resizable(false).exact_size(512.0).frame(egui::Frame::new().fill(theme::PANEL).stroke(Stroke::new(1.0, theme::LINE))).show(ui, |ui| {
+    let max_w = RIGHT_WIDTH_MAX.min((ui.available_width() - 260.0).max(RIGHT_WIDTH_MIN));
+    let panel = egui::Panel::right("docks").resizable(true);
+    // Reset to Default Layout (ResetWindowLayout 0x100c43d24 → ResetRightDockLayout 0x100c3f600
+    // restores the dock state saved at start-up): force the default width for one frame.
+    let panel = if std::mem::take(&mut app.reset_layout) {
+        app.right_tab = RightTab::Laser;
+        panel.exact_size(RIGHT_WIDTH_DEFAULT.min(max_w))
+    } else {
+        panel.default_size(app.right_width.min(max_w)).size_range(RIGHT_WIDTH_MIN..=max_w)
+    };
+    let resp = panel
+        .frame(egui::Frame::new().fill(crate::theme::p().panel).stroke(Stroke::new(1.0, crate::theme::p().line)))
+        .show(ui, |ui| {
         cuts_dock(app, ui);
         ui.add_space(6.0);
         theme::dock_header(ui, match app.right_tab {
@@ -1447,6 +1499,12 @@ pub fn right_panel(app: &mut BeamForge, ui: &mut egui::Ui) {
             });
         });
     });
+    // remember the width once the person lets go of the edge
+    let w = resp.response.rect.width();
+    if (w - app.right_width).abs() > 0.5 && !ui.ctx().input(|i| i.pointer.any_down()) {
+        app.right_width = w;
+        crate::i18n::save_json("panel_width.json", &w);
+    }
 }
 
 fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
@@ -1454,29 +1512,55 @@ fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
     let frame_nr = ui.ctx().cumulative_frame_nr();
     egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
         let used = app.doc.used_layers();
+        // the person's request: when the canvas selection changes, select the row of the last selected
+        // object's layer (the original only keeps the previous row: UpdateCutList 0x100c993a8)
+        if app.selection != app.row_follows {
+            app.row_follows = app.selection.clone();
+            if let Some(layer) = app.selection.last().and_then(|id| app.doc.shapes.iter().find(|s| s.id == *id)).map(|s| s.layer) {
+                app.selected_row = Some(layer);
+            }
+        }
         if app.selected_row.is_none_or(|r| !used.contains(&r)) {
             app.selected_row = used.first().copied();
         }
+        let sel_grid_row = app.selected_row.and_then(|r| used.iter().position(|&l| l == r)).map(|i| i + 1);
         ui.horizontal(|ui| {
             let table_w = (ui.available_width() - 56.0).max(200.0);
-            egui::Frame::new().fill(theme::FIELD).corner_radius(4).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
+            egui::Frame::new().fill(crate::theme::p().field).corner_radius(4).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
                 ui.set_width(table_w - 8.0);
                 ui.set_max_width(table_w - 8.0);
                 ui.set_min_height(190.0);
                 ui.vertical(|ui| egui::ScrollArea::both().id_salt("cuts").max_height(190.0).max_width(table_w - 8.0).auto_shrink([false, false]).show(ui, |ui| {
-                    egui::Grid::new("cuts_grid").num_columns(7).striped(true).spacing(vec2(12.0, 4.0)).show(ui, |ui| {
+                    egui::Grid::new("cuts_grid")
+                        .num_columns(7)
+                        .with_row_color(move |row, style| {
+                            if Some(row) == sel_grid_row {
+                                Some(crate::theme::p().row_selected)
+                            } else if row % 2 == 1 {
+                                Some(style.visuals.faint_bg_color)
+                            } else {
+                                None
+                            }
+                        })
+                        .spacing(vec2(12.0, 4.0))
+                        .show(ui, |ui| {
                         for h in ["#", tr("Livello"), tr("Modalità"), tr("Vel./Pot. (mm/min / %)"), tr("Risultato"), tr("Mostra"), tr("Aria")] {
-                            ui.label(egui::RichText::new(h).color(TEXT_DIM).strong());
+                            ui.label(egui::RichText::new(h).color(crate::theme::p().text_dim).strong());
                         }
                         ui.end_row();
                         for &l in &used {
                             let selected = app.selected_row == Some(l);
-                            let r1 = ui.selectable_label(selected, layer_name(l));
+                            // the whole row is tinted (ROW_SELECTED) instead of an orange box per cell
+                            let cell = |ui: &mut egui::Ui, text: String| {
+                                let t = egui::RichText::new(text).color(if selected { crate::theme::p().row_selected_text } else { crate::theme::p().text });
+                                ui.add(egui::Label::new(t).selectable(false).sense(Sense::click()))
+                            };
+                            let r1 = cell(ui, layer_name(l).to_string());
                             let (rect, r2) = ui.allocate_exact_size(vec2(46.0, 16.0), Sense::click());
                             ui.painter().rect_filled(rect, 3.0, layer_color(l));
                             let cs = &app.doc.layers[l];
-                            let r3 = ui.selectable_label(selected, mode_it(cs.mode));
-                            let r4 = ui.selectable_label(selected, format!("{:.0} / {:.0}", cs.speed, cs.max_power));
+                            let r3 = cell(ui, mode_it(cs.mode).to_string());
+                            let r4 = cell(ui, format!("{:.0} / {:.0}", cs.speed, cs.max_power));
                             let (mut o, mut s, mut a) = (cs.output, cs.show, cs.air);
                             let mut ch = false;
                             ch |= ui.checkbox(&mut o, "").changed();
@@ -1503,7 +1587,7 @@ fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
                     if used.is_empty() {
                         ui.add_space(40.0);
                         ui.vertical_centered(|ui| {
-                            ui.label(egui::RichText::new(tr("Disegna o importa qualcosa:\ni livelli compaiono qui.")).color(TEXT_DIM));
+                            ui.label(egui::RichText::new(tr("Disegna o importa qualcosa:\ni livelli compaiono qui.")).color(crate::theme::p().text_dim));
                         });
                     }
                 }));
@@ -1624,7 +1708,10 @@ fn big_icon_button(ui: &mut egui::Ui, ic: crate::icons::Ic, text: &str, fill: Op
 
 fn big_button(ui: &mut egui::Ui, text: &str, fill: Option<Color32>, w: f32) -> bool {
     // fixed size: long translations are shortened with "…" instead of widening the panel
-    let mut b = egui::Button::new(egui::RichText::new(text).size(14.0)).truncate();
+    // coloured buttons (Avvia, Ferma) keep white text in both themes
+    let rt = egui::RichText::new(text).size(14.0);
+    let rt = if fill.is_some() { rt.color(Color32::WHITE) } else { rt };
+    let mut b = egui::Button::new(rt).truncate();
     if let Some(f) = fill {
         b = b.fill(f);
     }
@@ -1634,11 +1721,11 @@ fn big_button(ui: &mut egui::Ui, text: &str, fill: Option<Color32>, w: f32) -> b
 fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
     let w = (ui.available_width() - 16.0) / 3.0;
     ui.horizontal(|ui| {
-        if gated(app, ui, "start", |ui| big_button(ui, tr("Avvia"), Some(Color32::from_rgb(170, 70, 20)), w)) {
+        if always(app, ui, "start", |ui| big_button(ui, tr("Avvia"), Some(Color32::from_rgb(170, 70, 20)), w)) {
             app.start_job();
         }
         let pause_label = if app.paused { tr("Riprendi") } else { tr("Pausa") };
-        if gated(app, ui, "pause", |ui| big_button(ui, pause_label, None, w)) {
+        if always(app, ui, "pause", |ui| big_button(ui, pause_label, None, w)) && app.can("pause") {
             if app.paused {
                 app.laser.send(crate::laser::Cmd::Realtime(b'~'));
             } else {
@@ -1646,36 +1733,36 @@ fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
             }
             app.paused = !app.paused;
         }
-        if gated(app, ui, "stop", |ui| big_button(ui, tr("Ferma"), Some(Color32::from_rgb(120, 30, 30)), w)) {
+        if always(app, ui, "stop", |ui| big_button(ui, tr("Ferma"), Some(Color32::from_rgb(120, 30, 30)), w)) && app.can("stop") {
             app.laser.send(crate::laser::Cmd::StopJob);
             app.paused = false;
         }
     });
     let w2 = (3.0 * w + 8.0) / 2.0;
     ui.horizontal(|ui| {
-        if gated(app, ui, "frame", |ui| big_icon_button(ui, crate::icons::Ic::Frame, tr("Inquadra"), None, w2)) {
+        if always(app, ui, "frame", |ui| big_icon_button(ui, crate::icons::Ic::Frame, tr("Inquadra"), None, w2)) {
             app.frame_job();
         }
-        if gated(app, ui, "frame_outline", |ui| big_icon_button(ui, crate::icons::Ic::FrameOutline, tr("Inquadra forme"), None, w2)) {
+        if always(app, ui, "frame_outline", |ui| big_icon_button(ui, crate::icons::Ic::FrameOutline, tr("Inquadra forme"), None, w2)) {
             app.frame_outline_job();
         }
     });
     ui.horizontal(|ui| {
-        if gated(app, ui, "export_gcode", |ui| big_icon_button(ui, crate::icons::Ic::Save, tr("Salva G-code"), None, w)) {
+        if always(app, ui, "export_gcode", |ui| big_icon_button(ui, crate::icons::Ic::Save, tr("Salva G-code"), None, w)) {
             app.save_gcode();
         }
-        if gated(app, ui, "run_gcode", |ui| big_button(ui, tr("Esegui G-code"), None, w)) {
+        if always(app, ui, "run_gcode", |ui| big_button(ui, tr("Esegui G-code"), None, w)) {
             app.run_gcode_file();
         }
-        if gated(app, ui, "preview", |ui| big_icon_button(ui, crate::icons::Ic::Monitor, tr("Anteprima"), None, w)) {
+        if always(app, ui, "preview", |ui| big_icon_button(ui, crate::icons::Ic::Monitor, tr("Anteprima"), None, w)) {
             app.open_preview();
         }
     });
     ui.horizontal(|ui| {
-        if gated(app, ui, "home", |ui| big_icon_button(ui, crate::icons::Ic::Home, tr("Home"), None, w2)) {
+        if always(app, ui, "home", |ui| big_icon_button(ui, crate::icons::Ic::Home, tr("Home"), None, w2)) {
             app.send_lines(vec![crate::gcode::HOME_CMD.into()]);
         }
-        if gated(app, ui, "goto_origin", |ui| big_icon_button(ui, crate::icons::Ic::Origin, tr("Vai all'origine"), None, w2)) {
+        if always(app, ui, "goto_origin", |ui| big_icon_button(ui, crate::icons::Ic::Origin, tr("Vai all'origine"), None, w2)) {
             app.send_lines(vec![crate::gcode::jog_line(true, 0.0, 0.0, app.jog_speed)]);
         }
     });
@@ -1713,7 +1800,7 @@ fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
                 }
             }
             if app.device_list.devices.is_empty() {
-                ui.label(egui::RichText::new(tr("Nessuna periferica: apri Periferiche")).color(TEXT_DIM));
+                ui.label(egui::RichText::new(tr("Nessuna periferica: apri Periferiche")).color(crate::theme::p().text_dim));
             }
         });
         if let Some(i) = pick {
@@ -1740,9 +1827,9 @@ fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
         };
         let (r, _) = ui.allocate_exact_size(vec2(10.0, 10.0), egui::Sense::hover());
         ui.painter().circle_filled(r.center(), 4.5, dot);
-        ui.label(egui::RichText::new(txt).color(TEXT_DIM));
+        ui.label(egui::RichText::new(txt).color(crate::theme::p().text_dim));
     });
-    ui.label(egui::RichText::new(trf("Dispositivo: {} ({} × {} mm) — stato: {}", &[&app.doc.device.name, &format!("{:.0}", app.doc.device.width), &format!("{:.0}", app.doc.device.height), &app.machine_state])).color(TEXT_DIM));
+    ui.label(egui::RichText::new(trf("Dispositivo: {} ({} × {} mm) — stato: {}", &[&app.doc.device.name, &format!("{:.0}", app.doc.device.width), &format!("{:.0}", app.doc.device.height), &app.machine_state])).color(crate::theme::p().text_dim));
 }
 
 fn move_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
@@ -1805,7 +1892,7 @@ fn move_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
 }
 
 fn console_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
-    egui::Frame::new().fill(theme::FIELD).corner_radius(4).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
+    egui::Frame::new().fill(crate::theme::p().field).corner_radius(4).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
         ui.set_min_height(200.0);
         ui.set_width(ui.available_width());
         egui::ScrollArea::vertical().id_salt("console").max_height(240.0).stick_to_bottom(true).show(ui, |ui| {
@@ -1838,7 +1925,7 @@ fn console_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
 fn shape_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
     let frame_nr = ui.ctx().cumulative_frame_nr();
     if app.selection.len() != 1 {
-        ui.label(egui::RichText::new(if app.selection.is_empty() { tr("Nessuna forma selezionata.") } else { tr("Più forme selezionate.") }).color(TEXT_DIM));
+        ui.label(egui::RichText::new(if app.selection.is_empty() { tr("Nessuna forma selezionata.") } else { tr("Più forme selezionate.") }).color(crate::theme::p().text_dim));
         return;
     }
     let id = app.selection[0];
@@ -1968,7 +2055,7 @@ fn offset_window(app: &mut BeamForge, ctx: &egui::Context) {
             let group = |ui: &mut egui::Ui, title: &str, add: &mut dyn FnMut(&mut egui::Ui)| {
                 ui.vertical(|ui| {
                     ui.label(egui::RichText::new(title).strong());
-                    egui::Frame::new().fill(theme::FIELD).corner_radius(4.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+                    egui::Frame::new().fill(crate::theme::p().field).corner_radius(4.0).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
                         ui.set_min_height(92.0);
                         add(ui);
                     });
@@ -2045,7 +2132,7 @@ fn fill_editor(ui: &mut egui::Ui, cs: &mut CutSetting, tab: u8) -> bool {
                     });
                     changed |= ui.add_enabled(scan && cs.overscan, dv(&mut cs.overscan_percent).speed(0.1).range(0.0..=50.0).max_decimals(1).suffix("%")).changed();
                     // CutSettingEdit::UpdateOverscanDistance 0x100b877f4: speed (mm/s) × % / 100, "%2.2f"
-                    ui.label(egui::RichText::new(format!("{:.2}mm", overscan_mm(cs))).color(TEXT_DIM));
+                    ui.label(egui::RichText::new(format!("{:.2}mm", overscan_mm(cs))).color(crate::theme::p().text_dim));
                     ui.end_row();
                     ui.label(tr("Intervallo linea (mm)"));
                     changed |= ui.add(dv(&mut cs.interval).speed(0.005).range(0.01..=5.0).min_decimals(4).max_decimals(4)).changed();
@@ -2071,11 +2158,11 @@ fn fill_editor(ui: &mut egui::Ui, cs: &mut CutSetting, tab: u8) -> bool {
                     // Z offset / Z step need a Z axis, which BeamForge's devices don't have
                     ui.add_enabled(false, egui::Label::new(tr("Offset Z (mm)")));
                     ui.add_enabled(false, dv(&mut cs.z_offset).max_decimals(2).min_decimals(2));
-                    ui.label(egui::RichText::new(tr("(nessuno)")).color(TEXT_DIM));
+                    ui.label(egui::RichText::new(tr("(nessuno)")).color(crate::theme::p().text_dim));
                     ui.end_row();
                     ui.add_enabled(false, egui::Label::new(tr("Fase Z per passaggio (mm)")));
                     ui.add_enabled(false, dv(&mut cs.z_per_pass).max_decimals(2).min_decimals(2));
-                    ui.label(egui::RichText::new(tr("(nessuno)")).color(TEXT_DIM));
+                    ui.label(egui::RichText::new(tr("(nessuno)")).color(crate::theme::p().text_dim));
                     ui.end_row();
                 });
             });
@@ -2112,7 +2199,7 @@ fn fill_editor(ui: &mut egui::Ui, cs: &mut CutSetting, tab: u8) -> bool {
         ui.separator();
         changed |= ui.checkbox(&mut cs.flood_fill, tr("Riempimento completo")).on_hover_text(tr("Riempie zona per zona, senza attraversare gli spazi vuoti")).changed();
     } else {
-        ui.label(egui::RichText::new(tr("Nessuna opzione avanzata per il riempimento offset.")).color(TEXT_DIM));
+        ui.label(egui::RichText::new(tr("Nessuna opzione avanzata per il riempimento offset.")).color(crate::theme::p().text_dim));
     }
     changed
 }
@@ -2137,7 +2224,7 @@ pub fn overscan_mm(cs: &CutSetting) -> f64 {
 /// Small picture of the scan pattern: zig-zag arrows for Fill (one way when not bidirectional,
 /// a faint second pass at 90° with cross-hatch), a spiral for Offset Fill.
 fn scan_pattern(p: &egui::Painter, r: Rect, cs: &CutSetting) {
-    let ink = Color32::from_gray(225);
+    let ink = crate::theme::p().icon;
     let start = Color32::from_rgb(40, 220, 60);
     let red = Color32::from_rgb(220, 50, 50);
     let c = r.center();
@@ -2277,7 +2364,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                             } else {
                                 tr("Verso l'interno")
                             };
-                            ui.label(egui::RichText::new(dir).color(TEXT_DIM));
+                            ui.label(egui::RichText::new(dir).color(crate::theme::p().text_dim));
                         });
                         ui.end_row();
                         ui.label(tr("Modalità perforazione"));
@@ -2293,7 +2380,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                         ui.label(tr("Intervallo (mm)"));
                         ui.horizontal(|ui| {
                             changed |= ui.add(dv(&mut cs.interval).speed(0.005).range(0.01..=5.0).max_decimals(3)).changed();
-                            ui.label(egui::RichText::new(trf("= {} linee per pollice", &[&format!("{:.0}", 25.4 / cs.interval)])).color(TEXT_DIM));
+                            ui.label(egui::RichText::new(trf("= {} linee per pollice", &[&format!("{:.0}", 25.4 / cs.interval)])).color(crate::theme::p().text_dim));
                         });
                         ui.end_row();
                         ui.label(tr("Angolo di scansione (°)"));
@@ -2393,7 +2480,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                                         action = Some("tab_tool");
                                     }
                                 });
-                                ui.label(egui::RichText::new(tr("Strumento Linguette: clic sul contorno per aggiungere, trascina per spostare, Ctrl/Cmd-clic o doppio clic per togliere.")).color(TEXT_DIM).small());
+                                ui.label(egui::RichText::new(tr("Strumento Linguette: clic sul contorno per aggiungere, trascina per spostare, Ctrl/Cmd-clic o doppio clic per togliere.")).color(crate::theme::p().text_dim).small());
                             }
                         });
                     });
@@ -2651,9 +2738,23 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                     }
                 });
                 ui.end_row();
+                // light/dark theme (the original offers Classic Light / Classic Dark, Core_Theme 0x1007295dc)
+                ui.label(tr("Tema"));
+                let light = theme::p().light;
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(!light, tr("Scuro")).clicked() && light {
+                        theme::set_light(ctx, false);
+                        theme::save_light(false);
+                    }
+                    if ui.selectable_label(light, tr("Chiaro")).clicked() && !light {
+                        theme::set_light(ctx, true);
+                        theme::save_light(true);
+                    }
+                });
+                ui.end_row();
             });
-            ui.label(egui::RichText::new(trf("Lingua di sistema rilevata: {}", &[&crate::i18n::system_lang().native_name()])).color(TEXT_DIM));
-            ui.label(egui::RichText::new(tr("La lingua cambia subito in tutta l'app e viene ricordata.")).color(TEXT_DIM));
+            ui.label(egui::RichText::new(trf("Lingua di sistema rilevata: {}", &[&crate::i18n::system_lang().native_name()])).color(crate::theme::p().text_dim));
+            ui.label(egui::RichText::new(tr("La lingua cambia subito in tutta l'app e viene ricordata.")).color(crate::theme::p().text_dim));
             ui.separator();
             if ui.button(tr("Impostazioni dispositivo…")).clicked() {
                 app.show_device = true;
@@ -2670,10 +2771,29 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
     if app.show_about {
         let mut open = true;
         theme::centered(ctx, "about", egui::Window::new(tr("Informazioni su BeamForge")).open(&mut open).resizable(false).collapsible(false)).show(ctx, |ui| {
+            // same order as the original's About page (HelpDialog::HelpDialog 0x100c1a2b8): who made it,
+            // when it was built (UTC), the licence, then the third-party components with their licences.
+            // The original's "License Validation Date" lines are left out: BeamForge needs no licence key.
             ui.heading(egui::RichText::new("◆ BeamForge 1.0").color(ACCENT));
             ui.label(tr("Software libero per progettare e controllare laser."));
-            ui.label(tr("Nessuna licenza, nessuna prova a tempo, nessuna attivazione."));
-            ui.label(egui::RichText::new(tr("Controller supportati: GRBL (G-code via porta seriale).")).color(TEXT_DIM));
+            ui.add_space(6.0);
+            ui.label("Copyright © 2026 servimmagine");
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(tr("Compilato il:")).strong());
+                ui.label(format!("{} UTC", env!("BEAMFORGE_BUILD_UTC")));
+            });
+            ui.add_space(6.0);
+            ui.label(tr("Licenza open source Apache 2.0: libero da usare, copiare e modificare. Nessuna prova a tempo, nessuna attivazione."));
+            ui.label(egui::RichText::new(tr("Controller supportati: GRBL (G-code via porta seriale).")).color(crate::theme::p().text_dim));
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new(tr("Componenti di terze parti")).strong());
+            for (name, licence, url) in THIRD_PARTY {
+                ui.horizontal(|ui| {
+                    ui.label("•");
+                    ui.hyperlink_to(egui::RichText::new(*name).strong(), *url);
+                    ui.label(egui::RichText::new(*licence).color(crate::theme::p().text_dim));
+                });
+            }
         });
         if !open {
             app.show_about = false;

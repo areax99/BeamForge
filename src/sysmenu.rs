@@ -37,6 +37,18 @@ impl BeamForge {
         let n = self.selection.len();
         let items = || self.selection_items().len();
         let has_shapes = !self.doc.shapes.is_empty();
+        // UpdateActionsStatus 0x100c39980: every selection/clipboard action is also off while the current
+        // tool is busy (virtual call +0x90 on the active tool): a drag, a shape being drawn, an open polyline.
+        let busy = !matches!(self.drag, crate::app::Drag::None) || !self.line_pts.is_empty();
+        let edit = matches!(
+            id,
+            "cut" | "copy" | "paste" | "delete" | "duplicate" | "mirror_h" | "mirror_v" | "rot_cw" | "rot_ccw" | "center_page" | "offset"
+                | "group" | "ungroup" | "same_w" | "same_h" | "together_h" | "together_v" | "combine" | "combine_assist"
+                | "dist_h_spaced" | "dist_v_spaced" | "dist_h_centered" | "dist_v_centered" | "undo" | "redo"
+        ) || id.starts_with("align_");
+        if busy && edit {
+            return false;
+        }
         match id {
             "cut" | "copy" | "delete" | "duplicate" | "mirror_h" | "mirror_v" | "rot_cw" | "rot_ccw" | "center_page" | "offset" => n > 0,
             "paste" => !self.clipboard.is_empty(),
@@ -106,7 +118,7 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
                 Some(AboutMetadata {
                     name: Some("BeamForge".into()),
                     version: Some("1.0".into()),
-                    comments: Some(tr("Software libero per laser. Nessuna licenza richiesta.").into()),
+                    comments: Some(tr("Software libero per laser, licenza Apache 2.0. Nessuna attivazione richiesta.").into()),
                     ..Default::default()
                 }),
             ),
@@ -236,6 +248,8 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
             &item("tab_console", tr("Console"), None),
             &item("tab_shape", tr("Proprietà forma"), None),
             &sep(),
+            &item("reset_layout", tr("Reimposta disposizione predefinita"), None),
+            &sep(),
             &PredefinedMenuItem::minimize(Some(tr("Riduci a icona"))),
             &PredefinedMenuItem::fullscreen(Some(tr("Schermo intero"))),
         ],
@@ -346,6 +360,7 @@ pub fn run(app: &mut BeamForge, ctx: &egui::Context, id: &str) {
             "tab_move" => app.right_tab = RightTab::Move,
             "tab_console" => app.right_tab = RightTab::Console,
             "tab_shape" => app.right_tab = RightTab::Shape,
+            "reset_layout" => app.reset_layout = true,
             "about" => app.show_about = true,
             "settings" => app.show_settings = true,
             "lang_auto" => app.set_language(None, ctx),

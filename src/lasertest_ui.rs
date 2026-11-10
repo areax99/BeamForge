@@ -151,7 +151,7 @@ fn interval_window(app: &mut BeamForge, ctx: &egui::Context) {
 }
 
 fn axis_box(ui: &mut egui::Ui, id: &str, a: &mut Axis, columns: bool, center_enabled: bool) {
-    egui::Frame::new().fill(theme::FIELD).corner_radius(4.0).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
+    egui::Frame::new().fill(crate::theme::p().field).corner_radius(4.0).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
         egui::Grid::new(id).num_columns(2).spacing(vec2(8.0, 8.0)).show(ui, |ui| {
             ui.label(tr("Cont.:"));
             ui.add_sized(vec2(150.0, 22.0), dv(&mut a.count).range(1..=20));
@@ -298,7 +298,7 @@ fn material_window(app: &mut BeamForge, ctx: &egui::Context) {
             });
             ui.vertical(|ui| {
                 ui.label(egui::RichText::new(tr("Laser")).strong());
-                egui::Frame::new().fill(theme::FIELD).corner_radius(4.0).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
+                egui::Frame::new().fill(crate::theme::p().field).corner_radius(4.0).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
                     egui::Grid::new("mt_laser").num_columns(2).spacing(vec2(8.0, 8.0)).show(ui, |ui| {
                         if big(ui, tr("Anteprima"), 120.0, 54.0) {
                             act = Some(Act::Preview);

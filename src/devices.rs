@@ -8,7 +8,7 @@
 use crate::app::BeamForge;
 use crate::i18n::{tr, trf};
 use crate::model::{Device, OriginCorner};
-use crate::theme::{self, ACCENT, TEXT_DIM};
+use crate::theme::{self, ACCENT};
 use eframe::egui::{self, Color32, Stroke, vec2};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -413,7 +413,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
         let mut open = true;
         theme::centered(ctx, "devices", egui::Window::new(tr("Periferiche")).open(&mut open).resizable(false).collapsible(false).fixed_size(vec2(600.0, 520.0))).show(ctx, |ui| {
             ui.label(tr("Elenco periferiche personali"));
-            egui::Frame::new().fill(theme::FIELD).stroke(Stroke::new(1.0, Color32::from_gray(70))).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
+            egui::Frame::new().fill(crate::theme::p().field).stroke(Stroke::new(1.0, crate::theme::p().line)).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
                 ui.set_min_size(vec2(590.0, 330.0));
                 egui::ScrollArea::vertical().max_height(330.0).show(ui, |ui| {
                     if st.list.devices.is_empty() {
@@ -421,7 +421,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
                             device_icon(ui, 36.0);
                             ui.vertical(|ui| {
                                 ui.label(tr("Nessuna macchina"));
-                                ui.label(egui::RichText::new(tr("Usa «Trova il mio laser» o «Crea manualmente»")).color(TEXT_DIM));
+                                ui.label(egui::RichText::new(tr("Usa «Trova il mio laser» o «Crea manualmente»")).color(crate::theme::p().text_dim));
                             });
                         });
                     }
@@ -429,7 +429,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
                     for (i, d) in st.list.devices.iter().enumerate() {
                         let sel = st.selected == Some(i);
                         let r = egui::Frame::new()
-                            .fill(if sel { Color32::from_rgb(70, 45, 30) } else { Color32::TRANSPARENT })
+                            .fill(if sel { if crate::theme::p().light { crate::theme::p().row_selected } else { Color32::from_rgb(70, 45, 30) } } else { Color32::TRANSPARENT })
                             .inner_margin(egui::Margin::same(3))
                             .show(ui, |ui| {
                                 ui.set_width(ui.available_width());
@@ -537,11 +537,11 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
             ui.add_space(6.0);
             ui.add(egui::ProgressBar::new(f.progress).text(f.step.clone()).fill(ACCENT).animate(!f.done));
             ui.add_space(6.0);
-            egui::Frame::new().fill(theme::FIELD).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
+            egui::Frame::new().fill(crate::theme::p().field).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
                 ui.set_min_size(vec2(550.0, 190.0));
                 egui::ScrollArea::vertical().max_height(190.0).show(ui, |ui| {
                     if f.results.is_empty() {
-                        ui.label(egui::RichText::new(if f.done { tr("Nessun controller ha risposto. Controlla cavo, alimentazione e driver USB, poi riprova, oppure crea il dispositivo a mano.") } else { tr("In attesa di risposte…") }).color(TEXT_DIM));
+                        ui.label(egui::RichText::new(if f.done { tr("Nessun controller ha risposto. Controlla cavo, alimentazione e driver USB, poi riprova, oppure crea il dispositivo a mano.") } else { tr("In attesa di risposte…") }).color(crate::theme::p().text_dim));
                     }
                     for (i, r) in f.results.iter().enumerate() {
                         let size = match (r.width, r.height) {

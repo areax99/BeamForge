@@ -229,7 +229,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
             ui.horizontal_top(|ui| {
                 egui::Grid::new("measure_shape").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
                     let row = |ui: &mut egui::Ui, l: &str, v: String| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(egui::RichText::new(l).color(crate::theme::TEXT_DIM)));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(egui::RichText::new(l).color(crate::theme::p().text_dim)));
                         ui.label(v);
                         ui.end_row();
                     };
@@ -246,7 +246,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
                 ui.add_space(16.0);
                 egui::Grid::new("measure_seg").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
                     let row = |ui: &mut egui::Ui, l: &str, v: String| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(egui::RichText::new(l).color(crate::theme::TEXT_DIM)));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(egui::RichText::new(l).color(crate::theme::p().text_dim)));
                         ui.label(v);
                         ui.end_row();
                     };
@@ -274,7 +274,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
                 });
             });
             if info.is_none() && seg.is_none() {
-                ui.label(egui::RichText::new(tr("Passa sopra una forma o trascina per misurare.")).color(crate::theme::TEXT_DIM));
+                ui.label(egui::RichText::new(tr("Passa sopra una forma o trascina per misurare.")).color(crate::theme::p().text_dim));
             }
         });
     if toggle {

@@ -241,9 +241,11 @@ pub fn assistant_window(app: &mut BeamForge, ctx: &egui::Context) {
                 let (rect, resp) = ui.allocate_exact_size(vec2(118.0, 84.0), Sense::click());
                 let p = ui.painter();
                 let on = applied == op;
-                p.rect(rect, 6.0, if on { Color32::from_rgb(120, 52, 18) } else if resp.hovered() { Color32::from_rgb(52, 56, 66) } else { theme::FIELD }, Stroke::new(1.0, if on { ACCENT } else { Color32::from_gray(70) }), StrokeKind::Inside);
-                paint_icon(p, rect.center() - vec2(0.0, 10.0), op, theme::TEXT, 1.8);
-                p.text(pos2(rect.center().x, rect.bottom() - 14.0), egui::Align2::CENTER_CENTER, name, egui::FontId::proportional(13.0), theme::TEXT);
+                p.rect(rect, 6.0, if on { Color32::from_rgb(120, 52, 18) } else if resp.hovered() { crate::theme::p().btn_hover } else { crate::theme::p().field }, Stroke::new(1.0, if on { ACCENT } else { crate::theme::p().line }), StrokeKind::Inside);
+                // white on the dark orange of the picked operation, theme text otherwise
+                let ink = if on { Color32::WHITE } else { crate::theme::p().text };
+                paint_icon(p, rect.center() - vec2(0.0, 10.0), op, ink, 1.8);
+                p.text(pos2(rect.center().x, rect.bottom() - 14.0), egui::Align2::CENTER_CENTER, name, egui::FontId::proportional(13.0), ink);
                 if resp.clicked() {
                     clicked = Some(op);
                 }
@@ -253,7 +255,7 @@ pub fn assistant_window(app: &mut BeamForge, ctx: &egui::Context) {
             }
         });
         if !hover_ok {
-            ui.label(egui::RichText::new(tr("Forme molto complesse: il risultato si vede al clic, non al passaggio del mouse.")).color(theme::TEXT_DIM));
+            ui.label(egui::RichText::new(tr("Forme molto complesse: il risultato si vede al clic, non al passaggio del mouse.")).color(crate::theme::p().text_dim));
         }
         ui.separator();
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

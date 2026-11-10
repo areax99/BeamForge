@@ -154,7 +154,14 @@ pub struct BeamForge {
     pub clipboard: Vec<Shape>,
     pub current_layer: usize,
     pub selected_row: Option<usize>,
+    /// The canvas selection the layer list last followed: when it changes, the row of the last
+    /// selected object's layer is selected (the person's request).
+    pub row_follows: Vec<u64>,
     pub right_tab: RightTab,
+    /// Width of the right options panel (drag its left edge); remembered in panel_width.json.
+    pub right_width: f32,
+    /// Set by Finestra > Reimposta disposizione predefinita: next frame forces the default width.
+    pub reset_layout: bool,
     pub job_opts: JobOptions,
     pub laser: Laser,
     pub connected: Option<String>,
@@ -256,10 +263,11 @@ impl BeamForge {
         if std::env::var_os("BEAMFORGE_SHOW_SAVE_PROMPT").is_some() {
             app.confirm = Some(PendingClose::Quit);
         }
-        // BEAMFORGE_OPEN=settings,device (for testing) opens those windows at start
+        // BEAMFORGE_OPEN=settings,device,about (for testing) opens those windows at start
         if let Ok(v) = std::env::var("BEAMFORGE_OPEN") {
             app.show_settings = v.contains("settings");
             app.show_device = v.contains("device") && !v.contains("devices");
+            app.show_about = v.contains("about");
             // BEAMFORGE_OPEN=shapes: the shapes menu open, with one of each new shape drawn
             if v.contains("shapes") {
                 app.shape_menu_open = true;
@@ -306,7 +314,10 @@ impl BeamForge {
     }
 
     fn create(cc: &eframe::CreationContext<'_>, screenshot: Option<PathBuf>) -> Self {
-        crate::theme::apply(&cc.egui_ctx);
+        // theme: the saved choice (themes/theme.ini in the settings folder), dark by default;
+        // BEAMFORGE_THEME=light|dark (for testing) overrides it for this run only
+        let light = std::env::var("BEAMFORGE_THEME").ok().map(|t| t == "light").unwrap_or_else(crate::theme::saved_light);
+        crate::theme::set_light(&cc.egui_ctx, light);
         // language: the saved choice, otherwise the system's
         crate::i18n::set(crate::i18n::load_choice().unwrap_or_else(crate::i18n::system_lang));
         // BEAMFORGE_LANG=de (for testing) overrides it for this run only
@@ -330,7 +341,10 @@ impl BeamForge {
             clipboard: Vec::new(),
             current_layer: 0,
             selected_row: None,
+            row_follows: Vec::new(),
             right_tab: RightTab::Laser,
+            reset_layout: false,
+            right_width: crate::i18n::load_json::<f32>("panel_width.json").filter(|w| w.is_finite()).unwrap_or(crate::panels::RIGHT_WIDTH_DEFAULT).clamp(crate::panels::RIGHT_WIDTH_MIN, crate::panels::RIGHT_WIDTH_MAX),
             job_opts: JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true },
             laser: Laser::new(cc.egui_ctx.clone()),
             connected: None,
@@ -341,7 +355,7 @@ impl BeamForge {
             head_pos: None,
             job_progress: None,
             paused: false,
-            console: vec![tr("BeamForge 1.0 — software laser libero. Nessuna licenza richiesta.").into()],
+            console: vec![tr("BeamForge 1.0 — software laser libero, licenza open source Apache 2.0. Nessuna attivazione richiesta.").into()],
             console_input: String::new(),
             jog_dist: 10.0,
             jog_speed: 3000.0,
@@ -1525,7 +1539,7 @@ impl eframe::App for BeamForge {
         crate::panels::palette_bar(self, ui);
         crate::panels::tool_bar(self, ui);
         crate::panels::right_panel(self, ui);
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(crate::theme::CANVAS_OUT)).show(ui, |ui| {
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(crate::theme::p().canvas_out)).show(ui, |ui| {
             crate::canvas::canvas(self, ui);
         });
         crate::panels::windows(self, &ctx);

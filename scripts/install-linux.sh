@@ -38,7 +38,15 @@ install -m 644 packaging/linux/beamforge-mime.xml "$MIME/packages/beamforge.xml"
 command -v update-mime-database >/dev/null 2>&1 && update-mime-database "$MIME" || true
 
 # the menu entry
-install -m 644 packaging/linux/beamforge.desktop "$APPS/beamforge.desktop"
+# Escape both desktop-entry strings and Exec arguments, including literal field-code markers.
+EXEC_PATH=$(printf '%s\n' "$BIN/beamforge" | sed 's/\\/\\\\\\\\/g; s/["`$]/\\\\&/g; s/%/%%/g')
+while IFS= read -r LINE; do
+  case "$LINE" in
+    Exec=*) printf 'Exec="%s" %%f\n' "$EXEC_PATH" ;;
+    *) printf '%s\n' "$LINE" ;;
+  esac
+done < packaging/linux/beamforge.desktop > "$APPS/beamforge.desktop"
+chmod 644 "$APPS/beamforge.desktop"
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q "$ICONS" || true
 

@@ -33,7 +33,7 @@ Developed in **Rust**.
 
 ### Build from source
 
-Want to compile BeamForge yourself? See the [release guide](RELEASE-GUIDE.md) for Rust setup and build instructions for macOS, Windows, and Linux.
+Want to compile BeamForge yourself? See the [build guide](RELEASE-GUIDE.md) for Rust setup and build instructions for macOS, Windows, and Linux.
 
 ### Opening BeamForge on macOS
 
@@ -89,7 +89,7 @@ Sviluppata in **Rust**.
 
 ### Compilare dai sorgenti
 
-Vuoi compilare BeamForge in autonomia? Consulta la [guida alle release](RELEASE-GUIDE.md) per installare Rust e trovare le istruzioni per macOS, Windows e Linux.
+Vuoi compilare BeamForge in autonomia? Consulta la [guida alla compilazione](RELEASE-GUIDE.md) per installare Rust e trovare le istruzioni per macOS, Windows e Linux.
 
 ### Primo avvio di BeamForge su macOS
 
@@ -145,7 +145,7 @@ Desarrollada en **Rust**.
 
 ### Compilar desde el código fuente
 
-¿Quieres compilar BeamForge por tu cuenta? Consulta la [guía de versiones](RELEASE-GUIDE.md) para instalar Rust y ver las instrucciones para macOS, Windows y Linux.
+¿Quieres compilar BeamForge por tu cuenta? Consulta la [guía de compilación](RELEASE-GUIDE.md) para instalar Rust y ver las instrucciones para macOS, Windows y Linux.
 
 ### Abrir BeamForge en macOS
 
@@ -201,7 +201,7 @@ Développée en **Rust**.
 
 ### Compiler depuis les sources
 
-Vous souhaitez compiler BeamForge vous-même ? Consultez le [guide des versions](RELEASE-GUIDE.md) pour installer Rust et suivre les instructions pour macOS, Windows et Linux.
+Vous souhaitez compiler BeamForge vous-même ? Consultez le [guide de compilation](RELEASE-GUIDE.md) pour installer Rust et suivre les instructions pour macOS, Windows et Linux.
 
 ### Ouvrir BeamForge sur macOS
 
@@ -257,7 +257,7 @@ Entwickelt in **Rust**.
 
 ### Aus dem Quellcode erstellen
 
-Möchtest du BeamForge selbst kompilieren? In der [Release-Anleitung](RELEASE-GUIDE.md) findest du die Rust-Installation und Build-Anweisungen für macOS, Windows und Linux.
+Möchtest du BeamForge selbst kompilieren? In der [Build-Anleitung](RELEASE-GUIDE.md) findest du die Rust-Installation und Build-Anweisungen für macOS, Windows und Linux.
 
 ### BeamForge unter macOS öffnen
 

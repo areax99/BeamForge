@@ -31,6 +31,10 @@ Developed in **Rust**.
 - **Calibration tools:** material test grids and scan interval tests.
 - **Languages:** English, Italian, Spanish, French, and German.
 
+### Build from source
+
+Want to compile BeamForge yourself? See the [release guide](RELEASE-GUIDE.md) for Rust setup and build instructions for macOS, Windows, and Linux.
+
 ### Opening BeamForge on macOS
 
 The macOS app is not notarized by Apple, so macOS may block it the first time you open it. Download the app from the [official Releases page](https://github.com/areax99/BeamForge/releases); the Universal version supports both Apple Silicon and Intel Macs.
@@ -82,6 +86,10 @@ Sviluppata in **Rust**.
 - **Controllo laser:** collegamento seriale a controller GRBL, GRBL-M3 e grblHAL; ricerca delle periferiche, configurazione manuale, spostamenti manuali, inquadratura e avvio, pausa e arresto del lavoro.
 - **Strumenti di calibrazione:** griglie di test dei materiali e test dell'intervallo di scansione.
 - **Lingue:** inglese, italiano, spagnolo, francese e tedesco.
+
+### Compilare dai sorgenti
+
+Vuoi compilare BeamForge in autonomia? Consulta la [guida alle release](RELEASE-GUIDE.md) per installare Rust e trovare le istruzioni per macOS, Windows e Linux.
 
 ### Primo avvio di BeamForge su macOS
 
@@ -135,6 +143,10 @@ Desarrollada en **Rust**.
 - **Herramientas de calibración:** cuadrículas de prueba de materiales y pruebas del intervalo de barrido.
 - **Idiomas:** inglés, italiano, español, francés y alemán.
 
+### Compilar desde el código fuente
+
+¿Quieres compilar BeamForge por tu cuenta? Consulta la [guía de versiones](RELEASE-GUIDE.md) para instalar Rust y ver las instrucciones para macOS, Windows y Linux.
+
 ### Abrir BeamForge en macOS
 
 La aplicación para macOS no está notarizada por Apple, por lo que macOS puede bloquearla la primera vez que la abras. Descárgala desde la [página oficial de versiones](https://github.com/areax99/BeamForge/releases): la versión Universal es compatible con Mac Apple Silicon e Intel.
@@ -187,6 +199,10 @@ Développée en **Rust**.
 - **Outils de calibrage :** grilles de test des matériaux et tests de l'intervalle de balayage.
 - **Langues :** anglais, italien, espagnol, français et allemand.
 
+### Compiler depuis les sources
+
+Vous souhaitez compiler BeamForge vous-même ? Consultez le [guide des versions](RELEASE-GUIDE.md) pour installer Rust et suivre les instructions pour macOS, Windows et Linux.
+
 ### Ouvrir BeamForge sur macOS
 
 L'application macOS n'est pas notariée par Apple : macOS peut donc la bloquer à la première ouverture. Téléchargez-la depuis la [page officielle des versions](https://github.com/areax99/BeamForge/releases) ; la version Universal est compatible avec les Mac Apple Silicon et Intel.
@@ -238,6 +254,10 @@ Entwickelt in **Rust**.
 - **Lasersteuerung:** serielle Verbindung zu GRBL-, GRBL-M3- und grblHAL-Controllern; Gerätesuche, manuelle Einrichtung, manuelle Verfahrbewegungen, Rahmenfahrt sowie Start, Pause und Stopp des Auftrags.
 - **Kalibrierwerkzeuge:** Materialtestraster und Scanintervalltests.
 - **Sprachen:** Englisch, Italienisch, Spanisch, Französisch und Deutsch.
+
+### Aus dem Quellcode erstellen
+
+Möchtest du BeamForge selbst kompilieren? In der [Release-Anleitung](RELEASE-GUIDE.md) findest du die Rust-Installation und Build-Anweisungen für macOS, Windows und Linux.
 
 ### BeamForge unter macOS öffnen
 

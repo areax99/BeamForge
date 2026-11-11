@@ -124,7 +124,6 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
             ),
             &sep(),
             &item("settings", tr("Impostazioni…"), Some(Accelerator::new(Modifiers::META, Code::Comma))),
-            &item("device", tr("Impostazioni dispositivo…"), None),
             &sep(),
             &PredefinedMenuItem::services(Some(tr("Servizi"))),
             &sep(),
@@ -169,6 +168,9 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
             &item("delete", tr("Elimina (⌫)"), None),
             &sep(),
             &item("select_all", tr("Seleziona tutto (⌘A)"), None),
+            &sep(),
+            // NoRole in the original, so it stays here and not in the app menu (MECHANICS.md, "Menu BeamForge").
+            &item("device", tr("Impostazioni dispositivo…"), None),
         ],
     )
     .ok()?;

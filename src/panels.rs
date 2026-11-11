@@ -176,7 +176,29 @@ fn top_frame() -> egui::Frame {
 pub fn menu_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
     egui::Panel::top("menu").frame(theme::bar_frame(crate::theme::p().field).inner_margin(egui::Margin::symmetric(8, 3))).show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.label(egui::RichText::new("BeamForge").color(ACCENT).strong().size(14.0));
+            // The app menu on Linux and Windows: the actions the original gives an app-menu role (MECHANICS.md, "Menu BeamForge").
+            ui.menu_button(egui::RichText::new("BeamForge").color(ACCENT).strong().size(14.0), |ui| {
+                let ctx = ui.ctx().clone();
+                for row in [
+                    Some(("about", tr("Informazioni su BeamForge"))),
+                    None,
+                    Some(("settings", tr("Impostazioni…"))),
+                    None,
+                    Some(("quit", tr("Esci da BeamForge"))),
+                ] {
+                    match row {
+                        None => {
+                            ui.separator();
+                        }
+                        Some((id, label)) => {
+                            if ui.button(label).clicked() {
+                                ui.close();
+                                crate::sysmenu::run(app, &ctx, id);
+                            }
+                        }
+                    }
+                }
+            });
             ui.add_space(8.0);
             ui.menu_button(tr("File"), |ui| {
                 if ui.button(tr("Nuovo")).clicked() {
@@ -354,8 +376,92 @@ pub fn menu_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
                     app.show_about = true;
                 }
             });
+            // no system title bar on Linux and Windows: the window buttons live here, and the
+            // empty part of the bar moves the window
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                window_buttons(ui);
+                window_drag_area(ui);
+            });
         });
     });
+}
+
+/// The empty rest of a bar: drag it to move the window, double-click it to maximise or restore.
+pub fn window_drag_area(ui: &mut egui::Ui) {
+    let size = vec2(ui.available_width().max(0.0), ui.available_height().max(20.0));
+    let (_, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    if resp.drag_started_by(egui::PointerButton::Primary) {
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+    }
+    if resp.double_clicked() {
+        let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+    }
+}
+
+/// Close, maximise and minimise, drawn by BeamForge (laid out right to left).
+fn window_buttons(ui: &mut egui::Ui) {
+    let ctx = ui.ctx().clone();
+    let ink = crate::theme::p().ink;
+    let button = |ui: &mut egui::Ui, hover: Color32, tip: &str| {
+        let (rect, resp) = ui.allocate_exact_size(vec2(34.0, 24.0), Sense::click());
+        if resp.hovered() {
+            ui.painter().rect_filled(rect, 3.0, hover);
+        }
+        (rect.center(), resp.on_hover_text(tip))
+    };
+    let st = Stroke::new(1.3, ink);
+    let (c, r) = button(ui, Color32::from_rgb(196, 43, 28), tr("Chiudi"));
+    ui.painter().line_segment([c + vec2(-5.0, -5.0), c + vec2(5.0, 5.0)], st);
+    ui.painter().line_segment([c + vec2(-5.0, 5.0), c + vec2(5.0, -5.0)], st);
+    if r.clicked() {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+    let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+    let (c, r) = button(ui, crate::theme::p().btn_hover, if maximized { tr("Ripristina") } else { tr("Ingrandisci finestra") });
+    ui.painter().rect_stroke(Rect::from_center_size(c, vec2(10.0, 10.0)), 0.0, st, StrokeKind::Middle);
+    if r.clicked() {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+    }
+    let (c, r) = button(ui, crate::theme::p().btn_hover, tr("Riduci a icona"));
+    ui.painter().line_segment([c + vec2(-5.0, 0.0), c + vec2(5.0, 0.0)], st);
+    if r.clicked() {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+    }
+}
+
+/// Without a system frame (Linux, Windows) the window is resized from a thin band along its edges.
+pub fn window_resize_edges(ctx: &egui::Context) {
+    if cfg!(target_os = "macos") || ctx.input(|i| i.viewport().maximized.unwrap_or(false)) {
+        return;
+    }
+    const BAND: f32 = 5.0;
+    let screen = ctx.content_rect();
+    let Some(p) = ctx.input(|i| i.pointer.hover_pos()) else { return };
+    let (l, r) = (p.x - screen.left() < BAND, screen.right() - p.x < BAND);
+    let (t, b) = (p.y - screen.top() < BAND, screen.bottom() - p.y < BAND);
+    use egui::viewport::ResizeDirection as D;
+    let dir = match (l, r, t, b) {
+        (true, _, true, _) => D::NorthWest,
+        (_, true, true, _) => D::NorthEast,
+        (true, _, _, true) => D::SouthWest,
+        (_, true, _, true) => D::SouthEast,
+        (true, ..) => D::West,
+        (_, true, ..) => D::East,
+        (_, _, true, _) => D::North,
+        (_, _, _, true) => D::South,
+        _ => return,
+    };
+    let icon = match dir {
+        D::North | D::South => egui::CursorIcon::ResizeVertical,
+        D::East | D::West => egui::CursorIcon::ResizeHorizontal,
+        D::NorthWest | D::SouthEast => egui::CursorIcon::ResizeNwSe,
+        D::NorthEast | D::SouthWest => egui::CursorIcon::ResizeNeSw,
+    };
+    ctx.set_cursor_icon(icon);
+    if ctx.input(|i| i.pointer.primary_pressed()) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(dir));
+    }
 }
 
 // ---------------------------------------------------------------- main toolbar
@@ -524,9 +630,16 @@ fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
     resp.on_hover_text(tip).clicked()
 }
 
+/// Room left for the macOS close/minimise/zoom buttons at the toolbar's left end (estimated).
+const MAC_WINDOW_BUTTONS_WIDTH: f32 = 70.0;
+
 pub fn main_toolbar(app: &mut BeamForge, ui: &mut egui::Ui) {
     egui::Panel::top("main_toolbar").frame(top_frame()).show(ui, |ui| {
         ui.horizontal(|ui| {
+            // macOS: the three window buttons sit over this bar's left end (no title bar)
+            if cfg!(target_os = "macos") {
+                ui.add_space(MAC_WINDOW_BUTTONS_WIDTH);
+            }
             if tb(ui, TbIcon::New, tr("Nuovo progetto")) {
                 app.new_doc(ui.ctx());
             }
@@ -604,6 +717,10 @@ pub fn main_toolbar(app: &mut BeamForge, ui: &mut egui::Ui) {
                 } else {
                     let dot = if app.connected.is_some() { "●" } else { "○" };
                     ui.label(egui::RichText::new(dot).color(col)).on_hover_text(txt);
+                }
+                // macOS has no title bar to grab: the toolbar's empty part moves the window
+                if cfg!(target_os = "macos") {
+                    window_drag_area(ui);
                 }
             });
         });

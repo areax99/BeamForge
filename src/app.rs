@@ -60,6 +60,9 @@ pub enum Drag {
     None,
     Move { start: P2, orig: Vec<Shape> },
     Scale { handle: usize, orig: Vec<Shape>, bbox: BBox },
+    /// Shift + a corner handle: turn the selection about its centre (SelectionTool::Update 0x10077784c).
+    /// `start` is the pointer's angle from `pivot` when the drag began, `deg` the turn shown so far.
+    Rotate { orig: Vec<Shape>, pivot: P2, start: f64, deg: f64 },
     Rubber { start: P2 },
     Create { start: P2 },
 }
@@ -275,6 +278,13 @@ impl BeamForge {
                 for (g, x) in [(Geometry::Polygon { sides: 3, r: 40.0, ry: Some(40.0) }, 60.0), (Geometry::Polygon { sides: 8, r: 40.0, ry: Some(40.0) }, 150.0), (star(None), 240.0), (star(Some(DUAL_STAR_MIDDLE)), 330.0)] {
                     app.doc.add_shape(Shape::new(0, g, 0, x, 200.0));
                 }
+            }
+            // BEAMFORGE_OPEN=rotate: one rectangle picked and turned 20°, to show the rotate arrows
+            // (run with BEAMFORGE_SHIFT=1 so Shift counts as held)
+            if v.contains("rotate") {
+                let a = app.doc.add_shape(Shape::new(0, Geometry::Rect { w: 120.0, h: 70.0, radius: 0.0 }, 0, 200.0, 220.0));
+                app.selection = vec![a];
+                app.rotate_sel(20.0);
             }
             // BEAMFORGE_OPEN=combine: two overlapping squares picked, the combine menu open
             // (and with "assist" the assistant showing the union)
@@ -1430,8 +1440,16 @@ impl BeamForge {
     }
 
     pub fn update_title(&mut self, ctx: &egui::Context) {
-        let name = self.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| tr("<senza titolo>").into());
-        let t = format!("BeamForge — {}{}", name, if self.dirty { " *" } else { "" });
+        // MainWindow::UpdateTitle (0x1006874fc): file name without extension (or "<untitled>"),
+        // " *" when changed (0x102204bc9), " - " device name when there is one, " - " program name.
+        // The window has no title bar now, but the title still names it in the taskbar and Dock.
+        let name = self.path.as_ref().and_then(|p| p.file_stem()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| tr("<senza titolo>").into());
+        let mut t = format!("{}{}", name, if self.dirty { " *" } else { "" });
+        if !self.doc.device.name.is_empty() {
+            t.push_str(" - ");
+            t.push_str(&self.doc.device.name);
+        }
+        t.push_str(" - BeamForge");
         if t != self.title_cache {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(t.clone()));
             self.title_cache = t;
@@ -1515,6 +1533,10 @@ pub fn scripted_input() -> Vec<(u32, egui::Event)> {
 
 impl eframe::App for BeamForge {
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // BEAMFORGE_SHIFT=1 (for testing): Shift counts as held the whole run
+        if std::env::var_os("BEAMFORGE_SHIFT").is_some() {
+            raw_input.events.push(egui::Event::ModifiersChanged(egui::Modifiers::SHIFT));
+        }
         if self.input_script.is_empty() {
             return;
         }
@@ -1527,6 +1549,7 @@ impl eframe::App for BeamForge {
         let ctx = ui.ctx().clone();
         self.poll_laser();
         self.auto_connect(&ctx);
+        crate::panels::window_resize_edges(&ctx);
         crate::sysmenu::handle(self, &ctx);
         self.handle_shortcuts(&ctx);
         self.update_title(&ctx);

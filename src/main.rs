@@ -40,12 +40,24 @@ fn main() -> eframe::Result<()> {
     if screenshot.is_none() {
         std::thread::spawn(fileicon::register);
     }
+    let viewport = eframe::egui::ViewportBuilder::default()
+        .with_title("BeamForge")
+        .with_inner_size([1440.0, 860.0])
+        .with_min_inner_size([900.0, 600.0])
+        .with_icon(app_icon());
+    // No title bar, to give the space to the program (as the person asked): on macOS the
+    // window's content runs up to the top edge and only the three window buttons stay, drawn
+    // over the toolbar; elsewhere the system frame goes and BeamForge draws its own buttons.
+    // Opens filling the screen's free area, as the person asked (the original does this when it was
+    // maximised last time: Core_MainWindow::ShowEvent 0x10071d984 → showMaximized). Not in --screenshot
+    // runs, which keep the fixed size above so checks compare alike.
+    let viewport = if screenshot.is_none() { viewport.with_maximized(true) } else { viewport };
+    #[cfg(target_os = "macos")]
+    let viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
+    #[cfg(not(target_os = "macos"))]
+    let viewport = viewport.with_decorations(false);
     let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("BeamForge")
-            .with_inner_size([1440.0, 860.0])
-            .with_min_inner_size([900.0, 600.0])
-            .with_icon(app_icon()),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(

@@ -648,6 +648,8 @@ static ROWS: &[(&str, [&str; 4])] = &[
     ("Avanzamento", ["Progress", "Progreso", "Fortschritt", "Progression"]),
     ("Niente da incidere: aggiungi forme su un livello con Emissione attiva.", ["Nothing to burn: add shapes on a layer with Output on.", "Nada que grabar: añade formas en una capa con Salida activa.", "Nichts zu lasern: Formen auf einer Ebene mit aktiver Ausgabe hinzufügen.", "Rien à graver : ajoutez des formes sur un calque avec Sortie activée."]),
     ("Chiudi", ["Close", "Cerrar", "Schließen", "Fermer"]),
+    ("Ripristina", ["Restore", "Restaurar", "Wiederherstellen", "Restaurer"]),
+    ("Ingrandisci finestra", ["Maximize", "Maximizar", "Maximieren", "Agrandir"]),
     ("OK", ["OK", "Aceptar", "OK", "OK"]),
     // measure tool
     ("Misura", ["Measure", "Medir", "Messen", "Mesurer"]),

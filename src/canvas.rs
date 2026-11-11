@@ -106,6 +106,45 @@ pub fn zoom_to(app: &mut BeamForge, area: Rect, b: BBox) {
     app.view.offset = vec2(area.width() / 2.0 - c[0] as f32 * zoom, area.height() / 2.0 + c[1] as f32 * zoom);
 }
 
+/// The rotate handle sits this many screen pixels outside each corner, across and down
+/// (SelectionTool::Draw 0x100779234, handle type 4: ±8.0 on both axes).
+const ROTATE_HANDLE_OFFSET_PX: f32 = 8.0;
+/// How close (screen pixels) the pointer must be to a rotate handle to grab it. The original uses
+/// 8 px (SelectionTool::Update, nearest handle / gViewScale < 8.0); BeamForge allows 14 so the arrow
+/// is easy to catch, as the person had trouble grabbing it (estimated).
+const ROTATE_GRAB_PX: f32 = 14.0;
+
+/// Screen point of the rotate handle at a corner, pushed outward from the selection's middle.
+fn rotate_handle_pos(corner: Pos2, mid: Pos2) -> Pos2 {
+    let d = corner - mid;
+    corner + vec2(d.x.signum(), d.y.signum()) * ROTATE_HANDLE_OFFSET_PX
+}
+
+/// Degrees shown as -180..180 (0x10077793c..0x100777960).
+fn wrap_degrees(d: f64) -> f64 {
+    let d = if d <= -180.0 { d + 360.0 } else { d };
+    if d > 180.0 { d - 360.0 } else { d }
+}
+
+/// A curved double arrow round a corner, its middle on the rotate handle point.
+fn draw_rotate_arrow(painter: &egui::Painter, corner: Pos2, handle: Pos2) {
+    let out = handle - corner;
+    let r = out.length();
+    let base = out.y.atan2(out.x);
+    let span = std::f32::consts::FRAC_PI_4 * 1.3;
+    let at = |t: f32| corner + vec2(t.cos(), t.sin()) * r;
+    let pts: Vec<Pos2> = (0..=12).map(|i| at(base - span + 2.0 * span * i as f32 / 12.0)).collect();
+    painter.add(egui::Shape::line(pts.clone(), Stroke::new(4.0, Color32::from_black_alpha(140))));
+    painter.add(egui::Shape::line(pts, Stroke::new(2.0, crate::theme::ACCENT)));
+    for (t, sgn) in [(base - span, -1.0f32), (base + span, 1.0)] {
+        let tip = at(t);
+        let tangent = vec2(-t.sin(), t.cos()) * sgn;
+        let normal = vec2(t.cos(), t.sin());
+        let back = tip - tangent * 5.0;
+        painter.add(egui::Shape::convex_polygon(vec![tip + tangent * 1.5, back + normal * 4.0, back - normal * 4.0], crate::theme::ACCENT, Stroke::NONE));
+    }
+}
+
 fn handle_points(b: &BBox) -> [P2; 8] {
     let c = b.center();
     [
@@ -164,6 +203,31 @@ pub fn hit_test(app: &BeamForge, p: P2, tol: f64) -> Option<u64> {
         }
     }
     best.map(|b| b.0)
+}
+
+/// Where the next line point goes: with Shift held, the pointer is kept on the nearest of
+/// horizontal, vertical or 45° from the last point (LineTool::AxisSnap 0x100766010).
+fn line_cursor(app: &BeamForge, cursor: Option<P2>, shift: bool) -> Option<P2> {
+    let c = cursor?;
+    match app.line_pts.last() {
+        Some(last) if shift => Some(line_axis_snap(*last, c)),
+        _ => Some(c),
+    }
+}
+
+/// LineTool::AxisSnap (0x100766010): horizontal when |dy| is the smallest miss, vertical when |dx| is,
+/// otherwise 45° with both sides set to the longer of |dx| and |dy| (MECHANICS.md, "Linea con Shift").
+fn line_axis_snap(a: P2, b: P2) -> P2 {
+    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+    let diag_miss = (dx.abs() - dy.abs()).abs();
+    if dy.abs() <= dx.abs() && dy.abs() <= diag_miss {
+        [b[0], a[1]]
+    } else if dx.abs() <= dy.abs() && dx.abs() <= diag_miss {
+        [a[0], b[1]]
+    } else {
+        let m = dx.abs().max(dy.abs());
+        [a[0] + m * dx.signum(), a[1] + m * dy.signum()]
+    }
 }
 
 pub fn finish_line(app: &mut BeamForge, closed: bool) {
@@ -366,7 +430,22 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
             if resp.drag_started_by(egui::PointerButton::Primary) {
                 if let Some(p0) = press {
                     let mut started = false;
-                    if sel_box.is_valid() {
+                    // Shift turns the corner handles into rotate arrows (as the person asked)
+                    if sel_box.is_valid() && mods.shift {
+                        let pivot = sel_box.center();
+                        let mid = xf.to_screen(pivot);
+                        for hp in handle_points(&sel_box).iter().step_by(2) {
+                            if (rotate_handle_pos(xf.to_screen(*hp), mid) - xf.to_screen(p0)).length() < ROTATE_GRAB_PX {
+                                app.checkpoint(frame);
+                                let start = (p0[1] - pivot[1]).atan2(p0[0] - pivot[0]);
+                                app.drag = Drag::Rotate { orig: app.selected_shapes(), pivot, start, deg: 0.0 };
+                                started = true;
+                                break;
+                            }
+                        }
+                    }
+                    // while Shift shows the rotate arrows, corners don't resize
+                    if sel_box.is_valid() && !started && !mods.shift {
                         for (i, hp) in handle_points(&sel_box).iter().enumerate() {
                             let sp = xf.to_screen(*hp);
                             let pp = xf.to_screen(p0);
@@ -401,7 +480,21 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
             }
             if resp.dragged_by(egui::PointerButton::Primary) {
                 if let Some(cur) = resp.interact_pointer_pos().map(|p| xf.to_world(p)) {
-                    match &app.drag {
+                    match &mut app.drag {
+                        Drag::Rotate { orig, pivot, start, deg } => {
+                            let a = (cur[1] - pivot[1]).atan2(cur[0] - pivot[0]) - *start;
+                            // free rotation, as the person asked (the original's steps are in MECHANICS.md)
+                            let d = a.to_degrees();
+                            *deg = d;
+                            let (orig, pivot) = (orig.clone(), *pivot);
+                            app.checkpoint(frame);
+                            for o in orig {
+                                if let Some(s) = app.doc.find_mut(o.id) {
+                                    *s = o.clone();
+                                    s.rotate_about(d, pivot);
+                                }
+                            }
+                        }
                         Drag::Move { start, orig } => {
                             let dx = cur[0] - start[0];
                             let dy = cur[1] - start[1];
@@ -513,7 +606,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
         }
         Tool::Line => {
             if resp.clicked() {
-                if let Some(p) = cursor {
+                if let Some(p) = line_cursor(app, cursor, mods.shift) {
                     if app.line_pts.len() >= 3 && xf.to_screen(app.line_pts[0]).distance(xf.to_screen(p)) < 8.0 {
                         finish_line(app, true);
                     } else {
@@ -725,8 +818,14 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
     if sel_box.is_valid() && app.tool == Tool::Select {
         let r = Rect::from_two_pos(xf.to_screen(sel_box.min), xf.to_screen(sel_box.max)).expand(2.0);
         painter.extend(egui::Shape::dashed_line(&[r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()], Stroke::new(1.0, crate::theme::ACCENT), 3.0, 3.0));
-        for hp in handle_points(&sel_box) {
+        let rotating = matches!(app.drag, Drag::Rotate { .. }) || (mods.shift && matches!(app.drag, Drag::None));
+        let mid = r.center();
+        for (i, hp) in handle_points(&sel_box).into_iter().enumerate() {
             let c = xf.to_screen(hp);
+            if rotating && i % 2 == 0 {
+                draw_rotate_arrow(&painter, c, rotate_handle_pos(c, mid));
+                continue;
+            }
             let hr = Rect::from_center_size(c, vec2(7.0, 7.0));
             painter.rect_filled(hr, 1.0, crate::theme::ACCENT);
             painter.rect_stroke(hr, 1.0, Stroke::new(1.0, Color32::WHITE), StrokeKind::Inside);
@@ -738,6 +837,11 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
         let a = xf.to_screen(sel_box.anchor(app.anchor));
         painter.circle_filled(a, 4.5, crate::theme::ACCENT);
         painter.circle_stroke(a, 6.5, Stroke::new(1.5, Color32::WHITE));
+    }
+
+    // the turn so far, beside the pointer ("%1 deg", SelectionTool::Update 0x100777938)
+    if let (Drag::Rotate { deg, .. }, Some(p)) = (&app.drag, resp.interact_pointer_pos().or(hover)) {
+        painter.text(p + vec2(16.0, 16.0), egui::Align2::LEFT_TOP, format!("{:.1} deg", wrap_degrees(*deg)), egui::FontId::proportional(12.0), crate::theme::p().text);
     }
 
     // previews of tools in progress
@@ -797,7 +901,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
     }
     if app.tool == Tool::Line && !app.line_pts.is_empty() {
         let mut pts: Vec<Pos2> = app.line_pts.iter().map(|p| xf.to_screen(*p)).collect();
-        if let Some(c) = cursor {
+        if let Some(c) = line_cursor(app, cursor, mods.shift) {
             pts.push(xf.to_screen(c));
         }
         painter.add(egui::Shape::line(pts, Stroke::new(1.0, accent)));

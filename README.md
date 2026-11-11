@@ -31,6 +31,17 @@ Developed in **Rust**.
 - **Calibration tools:** material test grids and scan interval tests.
 - **Languages:** English, Italian, Spanish, French, and German.
 
+### Opening BeamForge on macOS
+
+The macOS app is not notarized by Apple, so macOS may block it the first time you open it. Download the app from the [official Releases page](https://github.com/areax99/BeamForge/releases); the Universal version supports both Apple Silicon and Intel Macs.
+
+1. Unzip the download and move **BeamForge.app** to **Applications**.
+2. Double-click the app. If macOS blocks it, dismiss the warning.
+3. Open **System Settings → Privacy & Security**, scroll down to **Security**, and click **Open Anyway** next to the BeamForge message.
+4. Authenticate if prompted and confirm **Open**.
+
+The button is available for about one hour after the blocked launch; try opening the app again if it has disappeared. After authorization, you can normally open the app by double-clicking it. If macOS reports malware or a damaged app, do not bypass the warning; verify the download and contact the developer. See [Apple Support](https://support.apple.com/en-us/102445).
+
 ### Typical workflow
 
 1. Create a design with the drawing tools or import an existing file.
@@ -71,6 +82,17 @@ Sviluppata in **Rust**.
 - **Controllo laser:** collegamento seriale a controller GRBL, GRBL-M3 e grblHAL; ricerca delle periferiche, configurazione manuale, spostamenti manuali, inquadratura e avvio, pausa e arresto del lavoro.
 - **Strumenti di calibrazione:** griglie di test dei materiali e test dell'intervallo di scansione.
 - **Lingue:** inglese, italiano, spagnolo, francese e tedesco.
+
+### Primo avvio di BeamForge su macOS
+
+L'app per macOS non è autenticata da Apple, quindi macOS potrebbe bloccarla al primo avvio. Scarica l'app dalla [pagina ufficiale delle release](https://github.com/areax99/BeamForge/releases): la versione Universal supporta sia i Mac Apple Silicon sia quelli Intel.
+
+1. Estrai lo ZIP e sposta **BeamForge.app** nella cartella **Applicazioni**.
+2. Apri l'app con un doppio clic. Se macOS la blocca, chiudi l'avviso.
+3. Apri **Impostazioni di Sistema → Privacy e Sicurezza**, scorri fino a **Sicurezza** e fai clic su **Apri comunque** accanto al messaggio relativo a BeamForge.
+4. Se richiesto, autenticati e conferma con **Apri**.
+
+Il pulsante rimane disponibile per circa un'ora dopo il tentativo bloccato: se è scomparso, prova nuovamente ad aprire l'app. Dopo l'autorizzazione, normalmente potrai aprirla con un doppio clic. Se macOS segnala malware o un'app danneggiata, non ignorare l'avviso: verifica il download e contatta lo sviluppatore. Consulta il [supporto Apple](https://support.apple.com/it-it/102445).
 
 ### Flusso di lavoro tipico
 
@@ -113,6 +135,17 @@ Desarrollada en **Rust**.
 - **Herramientas de calibración:** cuadrículas de prueba de materiales y pruebas del intervalo de barrido.
 - **Idiomas:** inglés, italiano, español, francés y alemán.
 
+### Abrir BeamForge en macOS
+
+La aplicación para macOS no está notarizada por Apple, por lo que macOS puede bloquearla la primera vez que la abras. Descárgala desde la [página oficial de versiones](https://github.com/areax99/BeamForge/releases): la versión Universal es compatible con Mac Apple Silicon e Intel.
+
+1. Descomprime el archivo ZIP y mueve **BeamForge.app** a **Aplicaciones**.
+2. Haz doble clic en la aplicación. Si macOS la bloquea, cierra el aviso.
+3. Abre **Ajustes del Sistema → Privacidad y seguridad**, desplázate hasta **Seguridad** y haz clic en **Abrir igualmente** junto al aviso de BeamForge.
+4. Si se solicita, autentícate y confirma con **Abrir**.
+
+El botón está disponible durante aproximadamente una hora después del intento bloqueado; si desaparece, intenta abrir la aplicación de nuevo. Después de autorizarla, normalmente podrás abrirla con doble clic. Si macOS advierte de malware o de una aplicación dañada, no ignores el aviso: comprueba la descarga y contacta con el desarrollador. Consulta el [soporte técnico de Apple](https://support.apple.com/es-es/102445).
+
 ### Flujo de trabajo habitual
 
 1. Crea un diseño con las herramientas de dibujo o importa un archivo existente.
@@ -154,6 +187,17 @@ Développée en **Rust**.
 - **Outils de calibrage :** grilles de test des matériaux et tests de l'intervalle de balayage.
 - **Langues :** anglais, italien, espagnol, français et allemand.
 
+### Ouvrir BeamForge sur macOS
+
+L'application macOS n'est pas notariée par Apple : macOS peut donc la bloquer à la première ouverture. Téléchargez-la depuis la [page officielle des versions](https://github.com/areax99/BeamForge/releases) ; la version Universal est compatible avec les Mac Apple Silicon et Intel.
+
+1. Décompressez le fichier ZIP et déplacez **BeamForge.app** dans **Applications**.
+2. Double-cliquez sur l'application. Si macOS la bloque, fermez l'alerte.
+3. Ouvrez **Réglages Système → Confidentialité et sécurité**, faites défiler jusqu'à **Sécurité**, puis cliquez sur **Ouvrir quand même** à côté du message concernant BeamForge.
+4. Authentifiez-vous si nécessaire et confirmez avec **Ouvrir**.
+
+Le bouton reste disponible environ une heure après la tentative bloquée ; s'il a disparu, essayez à nouveau d'ouvrir l'application. Une fois autorisée, elle pourra normalement être ouverte par un double-clic. Si macOS signale un logiciel malveillant ou une application endommagée, ne contournez pas l'alerte : vérifiez le téléchargement et contactez le développeur. Consultez l'[assistance Apple](https://support.apple.com/fr-fr/102445).
+
 ### Flux de travail type
 
 1. Créez un dessin avec les outils de dessin ou importez un fichier existant.
@@ -194,6 +238,17 @@ Entwickelt in **Rust**.
 - **Lasersteuerung:** serielle Verbindung zu GRBL-, GRBL-M3- und grblHAL-Controllern; Gerätesuche, manuelle Einrichtung, manuelle Verfahrbewegungen, Rahmenfahrt sowie Start, Pause und Stopp des Auftrags.
 - **Kalibrierwerkzeuge:** Materialtestraster und Scanintervalltests.
 - **Sprachen:** Englisch, Italienisch, Spanisch, Französisch und Deutsch.
+
+### BeamForge unter macOS öffnen
+
+Die macOS-App ist nicht von Apple notarisiert. Deshalb kann macOS sie beim ersten Öffnen blockieren. Lade die App von der [offiziellen Release-Seite](https://github.com/areax99/BeamForge/releases) herunter; die Universal-Version unterstützt Macs mit Apple Silicon und Intel.
+
+1. Entpacke die ZIP-Datei und verschiebe **BeamForge.app** in den Ordner **Programme**.
+2. Öffne die App per Doppelklick. Falls macOS sie blockiert, schließe die Warnung.
+3. Öffne **Systemeinstellungen → Datenschutz & Sicherheit**, scrolle zu **Sicherheit** und klicke neben dem Hinweis zu BeamForge auf **Dennoch öffnen**.
+4. Authentifiziere dich gegebenenfalls und bestätige mit **Öffnen**.
+
+Die Schaltfläche ist nach dem blockierten Versuch etwa eine Stunde lang verfügbar. Ist sie verschwunden, versuche die App erneut zu öffnen. Nach der Freigabe lässt sie sich normalerweise per Doppelklick öffnen. Meldet macOS Schadsoftware oder eine beschädigte App, umgehe die Warnung nicht: Überprüfe den Download und kontaktiere den Entwickler. Siehe den [Apple Support](https://support.apple.com/de-de/102445).
 
 ### Typischer Arbeitsablauf
 

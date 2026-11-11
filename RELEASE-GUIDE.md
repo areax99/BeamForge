@@ -102,13 +102,13 @@ The native MSVC C++ build tools and resource compiler must be available to Rust.
 
 #### Linux
 
-On the Linux computer, after installing the native packages listed above, build the executable:
+On the Linux computer, after installing the native packages listed above, the simplest option is to build and install BeamForge for the current user, including an application-menu entry:
 
 ```sh
-cargo build --release
+sh scripts/install-linux.sh
 ```
 
-The executable is created at `target/release/beamforge`. To install it for the current user with an application-menu entry, run `sh scripts/install-linux.sh`. The destination computer must also provide the required system libraries.
+The script runs `cargo build --release`, then installs the executable, icon, and application-menu entry. If you only want to build the executable without installing it, run `cargo build --release`; it is created at `target/release/beamforge`. The destination computer must also provide the required system libraries.
 
 ### Verify the build
 
@@ -214,13 +214,13 @@ Gli strumenti di compilazione C++ nativi MSVC e il compilatore di risorse devono
 
 #### Linux
 
-Sul computer Linux, dopo aver installato i pacchetti nativi elencati sopra, compila l'eseguibile:
+Sul computer Linux, dopo aver installato i pacchetti nativi elencati sopra, il modo più semplice è compilare e installare BeamForge per l'utente corrente, aggiungendo anche una voce al menu delle applicazioni:
 
 ```sh
-cargo build --release
+sh scripts/install-linux.sh
 ```
 
-L'eseguibile viene creato in `target/release/beamforge`. Per installarlo per l'utente corrente e aggiungere una voce al menu delle applicazioni, esegui `sh scripts/install-linux.sh`. Il computer di destinazione deve avere anche le librerie di sistema necessarie.
+Lo script esegue `cargo build --release`, poi installa l'eseguibile, l'icona e la voce nel menu delle applicazioni. Se vuoi soltanto compilare l'eseguibile senza installarlo, esegui `cargo build --release`; lo troverai in `target/release/beamforge`. Il computer di destinazione deve avere anche le librerie di sistema necessarie.
 
 ### Verificare la compilazione
 
@@ -326,13 +326,13 @@ Rust debe tener acceso a las herramientas nativas de compilación C++ de MSVC y 
 
 #### Linux
 
-En el ordenador Linux, después de instalar los paquetes nativos indicados, compila el ejecutable:
+En el ordenador Linux, después de instalar los paquetes nativos indicados, la opción más sencilla es compilar e instalar BeamForge para el usuario actual, incluyendo una entrada en el menú de aplicaciones:
 
 ```sh
-cargo build --release
+sh scripts/install-linux.sh
 ```
 
-El ejecutable se crea en `target/release/beamforge`. Para instalarlo para el usuario actual y añadir una entrada al menú de aplicaciones, ejecuta `sh scripts/install-linux.sh`. El equipo de destino también debe tener las bibliotecas de sistema necesarias.
+El script ejecuta `cargo build --release` y después instala el ejecutable, el icono y la entrada del menú de aplicaciones. Si solo quieres compilar el ejecutable sin instalarlo, ejecuta `cargo build --release`; se crea en `target/release/beamforge`. El equipo de destino también debe tener las bibliotecas de sistema necesarias.
 
 ### Verificar la compilación
 
@@ -438,13 +438,13 @@ Les outils natifs de compilation C++ MSVC et le compilateur de ressources doiven
 
 #### Linux
 
-Sur l'ordinateur Linux, après avoir installé les paquets natifs indiqués ci-dessus, compilez l'exécutable :
+Sur l'ordinateur Linux, après avoir installé les paquets natifs indiqués ci-dessus, le plus simple est de compiler et d'installer BeamForge pour l'utilisateur actuel, avec une entrée dans le menu des applications :
 
 ```sh
-cargo build --release
+sh scripts/install-linux.sh
 ```
 
-L'exécutable est créé dans `target/release/beamforge`. Pour l'installer pour l'utilisateur actuel et ajouter une entrée au menu des applications, exécutez `sh scripts/install-linux.sh`. L'ordinateur doit également disposer des bibliothèques système requises.
+Le script exécute `cargo build --release`, puis installe l'exécutable, l'icône et l'entrée du menu des applications. Si vous souhaitez uniquement compiler l'exécutable sans l'installer, exécutez `cargo build --release` ; il est créé dans `target/release/beamforge`. L'ordinateur doit également disposer des bibliothèques système requises.
 
 ### Vérifier la compilation
 
@@ -550,13 +550,13 @@ Die nativen MSVC-C++-Build-Werkzeuge und der Ressourcencompiler müssen für Rus
 
 #### Linux
 
-Führe auf dem Linux-Rechner nach der Installation der oben genannten nativen Pakete folgenden Befehl aus:
+Am einfachsten ist es, BeamForge nach der Installation der oben genannten nativen Pakete für den aktuellen Benutzer zu kompilieren und zu installieren, einschließlich eines Eintrags im Anwendungsmenü:
 
 ```sh
-cargo build --release
+sh scripts/install-linux.sh
 ```
 
-Die ausführbare Datei wird unter `target/release/beamforge` erstellt. Um sie für den aktuellen Benutzer zu installieren und einen Eintrag im Anwendungsmenü hinzuzufügen, führe `sh scripts/install-linux.sh` aus. Die benötigten Systembibliotheken müssen auch auf dem Zielrechner vorhanden sein.
+Das Skript führt `cargo build --release` aus und installiert anschließend die ausführbare Datei, das Symbol und den Eintrag im Anwendungsmenü. Wenn du die ausführbare Datei nur erstellen, aber nicht installieren möchtest, führe `cargo build --release` aus; sie wird unter `target/release/beamforge` erstellt. Die benötigten Systembibliotheken müssen auch auf dem Zielrechner vorhanden sein.
 
 ### Build überprüfen
 

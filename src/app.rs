@@ -182,6 +182,15 @@ pub struct BeamForge {
     pub preview: Option<Preview>,
     pub show_device: bool,
     pub show_about: bool,
+    /// Help > Updates: the window, and the GitHub check behind it (update.rs).
+    pub show_updates: bool,
+    pub updates: crate::update::Checker,
+    /// The daily automatic check still has to run this session.
+    pub auto_update_pending: bool,
+    /// The updated program to start when this one exits ("Riavvia ora").
+    pub relaunch_on_exit: Option<PathBuf>,
+    /// An import reading its file in the background (import_job.rs).
+    pub import_job: Option<crate::import_job::ImportJob>,
     pub show_settings: bool,
     pub measure: crate::measure::MeasureState,
     /// Device settings being edited, applied only on OK.
@@ -258,6 +267,10 @@ pub enum PendingClose {
 impl BeamForge {
     pub fn new(cc: &eframe::CreationContext<'_>, screenshot: Option<PathBuf>) -> Self {
         let mut app = Self::create(cc, screenshot);
+        crate::update::clean_leftovers();
+        app.auto_update_pending = app.screenshot.is_none()
+            && crate::i18n::load_json::<bool>("update_auto.json").unwrap_or(true)
+            && crate::i18n::load_json::<u64>("update_check_day.json") != Some(crate::update::today());
         // start with the default laser from Periferiche
         if let Some(i) = app.device_list.default {
             app.use_device(i);
@@ -271,6 +284,21 @@ impl BeamForge {
             app.show_settings = v.contains("settings");
             app.show_device = v.contains("device") && !v.contains("devices");
             app.show_about = v.contains("about");
+            app.show_updates = v.contains("updates");
+            if v.contains("updates-new") {
+                // a pretend newer release, to see the install button
+                *app.updates.state.lock().unwrap() = crate::update::State::Newer(crate::update::Release {
+                    version: "1.0.0-beta.2".into(),
+                    name: "BeamForge 1.0.0 Beta 2".into(),
+                    notes: "Sample notes.".into(),
+                    page: crate::update::RELEASES_PAGE.into(),
+                    beta: true,
+                    asset: Some(("BeamForge-1.0.0-beta.2-macos-universal.zip".into(), String::new())),
+                    asset_size: 12_000_000,
+                });
+            } else if app.show_updates {
+                app.updates.start(&cc.egui_ctx, false);
+            }
             // BEAMFORGE_OPEN=shapes: the shapes menu open, with one of each new shape drawn
             if v.contains("shapes") {
                 app.shape_menu_open = true;
@@ -328,6 +356,8 @@ impl BeamForge {
         // BEAMFORGE_THEME=light|dark (for testing) overrides it for this run only
         let light = std::env::var("BEAMFORGE_THEME").ok().map(|t| t == "light").unwrap_or_else(crate::theme::saved_light);
         crate::theme::set_light(&cc.egui_ctx, light);
+        crate::theme::use_system_fonts(&cc.egui_ctx);
+        crate::theme::STEADY_NO_SAVE.store(screenshot.is_some(), std::sync::atomic::Ordering::Relaxed);
         // language: the saved choice, otherwise the system's
         crate::i18n::set(crate::i18n::load_choice().unwrap_or_else(crate::i18n::system_lang));
         // BEAMFORGE_LANG=de (for testing) overrides it for this run only
@@ -372,6 +402,11 @@ impl BeamForge {
             preview: None,
             show_device: false,
             show_about: false,
+            show_updates: false,
+            updates: Default::default(),
+            auto_update_pending: false,
+            relaunch_on_exit: None,
+            import_job: None,
             show_settings: false,
             measure: Default::default(),
             device_draft: None,
@@ -636,11 +671,67 @@ impl BeamForge {
         }
     }
 
+    /// Where an imported drawing's middle goes: the middle of what the canvas shows, or the middle
+    /// of the work area before the canvas has been drawn once.
+    fn import_point(&self) -> P2 {
+        let a = self.view.last_area;
+        if a.x > 1.0 && a.y > 1.0 && self.view.zoom > 0.0 {
+            let z = self.view.zoom;
+            [((a.x / 2.0 - self.view.offset.x) / z) as f64, ((self.view.offset.y - a.y / 2.0) / z) as f64]
+        } else {
+            [self.doc.device.width / 2.0, self.doc.device.height / 2.0]
+        }
+    }
+
+    /// Import a file without freezing the window: the file is read and turned into shapes on a
+    /// background thread (`poll_import` adds them when done). A file iCloud keeps only in the cloud
+    /// ("dataless") makes the first read wait for its download, which can take minutes or never end
+    /// offline; the window stays usable meanwhile and the import can be cancelled.
+    /// --screenshot runs import at once, so their test setups see the shapes straight away.
     pub fn import_path(&mut self, p: &std::path::Path) {
+        if self.screenshot.is_some() {
+            let r = crate::formats::import_file(p);
+            self.finish_import(p, r);
+            return;
+        }
+        let icloud = crate::import_job::in_cloud_only(p);
+        if icloud {
+            crate::import_job::request_download(p);
+        }
+        self.import_job = Some(crate::import_job::ImportJob::start(p.to_path_buf(), icloud));
+    }
+
+    /// Show the import in progress and add its shapes once the background read is done.
+    pub fn poll_import(&mut self, ctx: &egui::Context) {
+        let Some(job) = self.import_job.as_ref() else { return };
+        if let Some(result) = job.take_result() {
+            let path = job.path.clone();
+            self.import_job = None;
+            self.finish_import(&path, result);
+            return;
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        if crate::import_job::window(ctx, job) {
+            // cancelled: the background read is left to end on its own and its result dropped
+            self.status = trf("Importazione annullata: {}", &[&job.path.display()]);
+            self.import_job = None;
+        }
+    }
+
+    fn finish_import(&mut self, p: &std::path::Path, result: Result<crate::formats::Imported, String>) {
         use crate::formats::Imported;
-        let imported = match crate::formats::import_file(p) {
+        let imported = match result {
             Ok(i) => i,
             Err(e) => {
+                // the original shows a message box (Core_Message::ShowError in ImportFileShapes
+                // 0x100982974); a line in the status bar alone looked like nothing happened
+                if self.screenshot.is_none() {
+                    rfd::MessageDialog::new()
+                        .set_level(rfd::MessageLevel::Error)
+                        .set_title(tr("Importazione non riuscita"))
+                        .set_description(format!("{}\n\n{}", p.display(), e))
+                        .show();
+                }
                 self.status = e;
                 return;
             }
@@ -664,8 +755,31 @@ impl BeamForge {
                 self.selection = ids;
                 self.status = trf("Importato {}", &[&p.display()]);
             }
-            Imported::Shapes(shapes) => {
+            Imported::Shapes(mut shapes) => {
                 self.checkpoint_now();
+                // MainWindow::ImportFile (0x100980068) hands ImportFileShapes the work area's point with
+                // ALIGN_H/ALIGN_V = centre: the drawing's middle goes there instead of staying at the file's
+                // own coordinates (a DXF drawn far from 0,0 used to land off the page and seem not
+                // imported). PCB files keep theirs (TranslatorDescriptor::UsesAbsoluteCoordinates), so
+                // the layers of one board stay lined up.
+                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                if !crate::formats::PCB_EXTS.contains(&ext.as_str()) {
+                    let mut b = BBox::empty();
+                    for s in &shapes {
+                        let sb = s.bbox();
+                        if sb.is_valid() {
+                            b.add(sb.min);
+                            b.add(sb.max);
+                        }
+                    }
+                    if b.is_valid() {
+                        let (c, target) = (b.center(), self.import_point());
+                        for s in &mut shapes {
+                            s.tx += target[0] - c[0];
+                            s.ty += target[1] - c[1];
+                        }
+                    }
+                }
                 // the file comes in as one group of its pieces, so "Separa" splits it
                 let gid = (shapes.len() > 1).then(|| self.doc.alloc_id());
                 let mut ids = Vec::new();
@@ -1445,10 +1559,9 @@ impl BeamForge {
         // The window has no title bar now, but the title still names it in the taskbar and Dock.
         let name = self.path.as_ref().and_then(|p| p.file_stem()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| tr("<senza titolo>").into());
         let mut t = format!("{}{}", name, if self.dirty { " *" } else { "" });
-        if !self.doc.device.name.is_empty() {
-            t.push_str(" - ");
-            t.push_str(&self.doc.device.name);
-        }
+        // the running original shows "No Machine" here when no device is set (measured, MECHANICS.md round 65)
+        t.push_str(" - ");
+        t.push_str(if self.doc.device.name.is_empty() { tr("Nessuna macchina") } else { &self.doc.device.name });
         t.push_str(" - BeamForge");
         if t != self.title_cache {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(t.clone()));
@@ -1460,6 +1573,29 @@ impl BeamForge {
         let Some(ss) = self.screenshot.as_mut() else { return };
         ss.frames += 1;
         ctx.request_repaint();
+        // BEAMFORGE_OPEN=editor,fill,switch (for testing): halfway, the layer goes back to Line,
+        // to see that the editor keeps the size it had with the Fill options
+        if ss.frames == 60 && std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("switch")) {
+            self.doc.layers[0].mode = CutMode::Line;
+        }
+        // BEAMFORGE_OPEN=editor,cycle (for measuring): every 10 frames the editor shows another mode and
+        // tab, with tabs on, so each state's size is seen; BEAMFORGE_DUMP_SIZES prints the sizes at the end
+        if std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("cycle")) && ss.frames % 10 == 0 && ss.frames < 100 {
+            let k = (ss.frames / 10) as usize;
+            let modes = [CutMode::Line, CutMode::Fill, CutMode::OffsetFill, CutMode::Image];
+            self.doc.layers[0].mode = modes[k % 4];
+            self.editor_tab = ((k / 4) % 2) as u8;
+            self.doc.layers[0].tabs_enabled = true;
+            self.doc.layers[0].manual_tabs = k % 2 == 1;
+        }
+        // BEAMFORGE_OPEN=material,cycle: the test generator opens each of its three inline editors in turn
+        if std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("material") && v.contains("cycle")) && ss.frames % 20 == 0 && ss.frames < 100 {
+            let e = (ss.frames / 20) as usize;
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new("mt_editing"), if e <= 3 { Some(e - 1) } else { None::<usize> }));
+        }
+        if ss.frames == 118 && std::env::var_os("BEAMFORGE_DUMP_SIZES").is_some() {
+            println!("{}", crate::theme::dump_sizes());
+        }
         if ss.frames >= 120 && !ss.requested {
             ss.requested = true;
             let slot = ss.image.clone();
@@ -1532,6 +1668,12 @@ pub fn scripted_input() -> Vec<(u32, egui::Event)> {
 }
 
 impl eframe::App for BeamForge {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if let Some(p) = self.relaunch_on_exit.take() {
+            crate::update::relaunch(&p);
+        }
+    }
+
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         // BEAMFORGE_SHIFT=1 (for testing): Shift counts as held the whole run
         if std::env::var_os("BEAMFORGE_SHIFT").is_some() {
@@ -1548,8 +1690,10 @@ impl eframe::App for BeamForge {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.poll_laser();
+        self.poll_import(&ctx);
         self.auto_connect(&ctx);
         crate::panels::window_resize_edges(&ctx);
+        self.auto_update_check(&ctx);
         crate::sysmenu::handle(self, &ctx);
         self.handle_shortcuts(&ctx);
         self.update_title(&ctx);
@@ -1586,6 +1730,21 @@ impl eframe::App for BeamForge {
 }
 
 impl BeamForge {
+    /// Once a day, 2 s after start, look for a newer version quietly (MainWindow::runUpdateCheck
+    /// 0x10068122c). Off in --screenshot runs and when the person turned it off in Updates.
+    fn auto_update_check(&mut self, ctx: &egui::Context) {
+        if !self.auto_update_pending {
+            return;
+        }
+        if ctx.input(|i| i.time) < crate::update::AUTO_CHECK_DELAY_S {
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+            return;
+        }
+        self.auto_update_pending = false;
+        crate::i18n::save_json("update_check_day.json", &crate::update::today());
+        self.updates.start(ctx, true);
+    }
+
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         use egui::{Key, KeyboardShortcut, Modifiers};
         let typing = ctx.egui_wants_keyboard_input();

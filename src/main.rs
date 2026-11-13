@@ -11,6 +11,7 @@ mod gcode;
 mod i18n;
 mod icons;
 mod import;
+mod import_job;
 mod measure;
 mod laser;
 mod lasertest;
@@ -22,6 +23,9 @@ mod panels;
 mod sysmenu;
 mod text;
 mod theme;
+mod update;
+#[cfg(test)]
+mod mechanics_check;
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();

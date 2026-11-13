@@ -123,8 +123,6 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
                 }),
             ),
             &sep(),
-            &item("settings", tr("Impostazioni…"), Some(Accelerator::new(Modifiers::META, Code::Comma))),
-            &sep(),
             &PredefinedMenuItem::services(Some(tr("Servizi"))),
             &sep(),
             &PredefinedMenuItem::hide(Some(tr("Nascondi BeamForge"))),
@@ -171,6 +169,9 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
             &sep(),
             // NoRole in the original, so it stays here and not in the app menu (MECHANICS.md, "Menu BeamForge").
             &item("device", tr("Impostazioni dispositivo…"), None),
+            // the running original has "Impostazioni" at the end of its Edit menu and none in the
+            // app menu (measured, MECHANICS.md round 65)
+            &item("settings", tr("Impostazioni…"), Some(Accelerator::new(Modifiers::META, Code::Comma))),
         ],
     )
     .ok()?;
@@ -258,7 +259,7 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
     )
     .ok()?;
 
-    let help = Submenu::with_items(tr("Guida"), true, &[&item("about", tr("Informazioni su BeamForge"), None)]).ok()?;
+    let help = Submenu::with_items(tr("Guida"), true, &[&item("updates", tr("Aggiornamenti…"), None), &item("about", tr("Informazioni su BeamForge"), None)]).ok()?;
 
     menu.append_items(&[&app_menu, &file, &edit, &tools, &arrange, &laser, &window, &help]).ok()?;
     #[cfg(target_os = "macos")]
@@ -364,6 +365,10 @@ pub fn run(app: &mut BeamForge, ctx: &egui::Context, id: &str) {
             "tab_shape" => app.right_tab = RightTab::Shape,
             "reset_layout" => app.reset_layout = true,
             "about" => app.show_about = true,
+            "updates" => {
+                app.show_updates = true;
+                app.updates.start(ctx, false);
+            }
             "settings" => app.show_settings = true,
             "lang_auto" => app.set_language(None, ctx),
             other if other.starts_with("lang_") => {

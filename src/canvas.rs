@@ -108,14 +108,14 @@ pub fn zoom_to(app: &mut BeamForge, area: Rect, b: BBox) {
 
 /// The rotate handle sits this many screen pixels outside each corner, across and down
 /// (SelectionTool::Draw 0x100779234, handle type 4: ±8.0 on both axes).
-const ROTATE_HANDLE_OFFSET_PX: f32 = 8.0;
+pub(crate) const ROTATE_HANDLE_OFFSET_PX: f32 = 8.0;
 /// How close (screen pixels) the pointer must be to a rotate handle to grab it. The original uses
 /// 8 px (SelectionTool::Update, nearest handle / gViewScale < 8.0); BeamForge allows 14 so the arrow
 /// is easy to catch, as the person had trouble grabbing it (estimated).
-const ROTATE_GRAB_PX: f32 = 14.0;
+pub(crate) const ROTATE_GRAB_PX: f32 = 14.0;
 
 /// Screen point of the rotate handle at a corner, pushed outward from the selection's middle.
-fn rotate_handle_pos(corner: Pos2, mid: Pos2) -> Pos2 {
+pub(crate) fn rotate_handle_pos(corner: Pos2, mid: Pos2) -> Pos2 {
     let d = corner - mid;
     corner + vec2(d.x.signum(), d.y.signum()) * ROTATE_HANDLE_OFFSET_PX
 }
@@ -217,7 +217,7 @@ fn line_cursor(app: &BeamForge, cursor: Option<P2>, shift: bool) -> Option<P2> {
 
 /// LineTool::AxisSnap (0x100766010): horizontal when |dy| is the smallest miss, vertical when |dx| is,
 /// otherwise 45° with both sides set to the longer of |dx| and |dy| (MECHANICS.md, "Linea con Shift").
-fn line_axis_snap(a: P2, b: P2) -> P2 {
+pub(crate) fn line_axis_snap(a: P2, b: P2) -> P2 {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let diag_miss = (dx.abs() - dy.abs()).abs();
     if dy.abs() <= dx.abs() && dy.abs() <= diag_miss {

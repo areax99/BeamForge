@@ -263,9 +263,139 @@ pub fn centered<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui
     ctx.data_mut(|d| d.insert_temp(id, pass));
     let w = w.pivot(egui::Align2::CENTER_CENTER);
     let just_opened = last.map_or(true, |p| p + 1 < pass);
+    let w = steady_size(ctx, key, w);
     if just_opened {
         w.current_pos(ctx.content_rect().center())
     } else {
         w.default_pos(ctx.content_rect().center())
     }
+}
+
+/// Each dialog opens at its largest size, so nothing grows when options are switched (the person's
+/// request). Measured on macOS with the system font by running BeamForge through every state of
+/// each window (`BEAMFORGE_OPEN=<window>,cycle BEAMFORGE_DUMP_SIZES=1 beamforge --screenshot …`,
+/// MECHANICS.md round 69), outer size in points, rounded up. A larger size seen later (another
+/// language, font or system) is still remembered on top of these.
+const LARGEST_SIZES: &[(&str, [f32; 2])] = &[
+    // all four modes × both tabs, tabs on and off
+    ("cut_editor", [516.0, 749.0]),
+    // with each of the three inline editors open
+    ("material_test", [966.0, 634.0]),
+    ("interval_test", [491.0, 314.0]),
+    // + the overlap warning line (≈ 24 pt)
+    ("offset", [418.0, 312.0]),
+    ("settings", [340.0, 209.0]),
+    ("device", [385.0, 458.0]),
+    ("about", [459.0, 637.0]),
+    ("devices", [626.0, 553.0]),
+    ("device_editor", [429.0, 420.0]),
+    // a newer version with notes filling their 180 pt scroll area
+    ("updates", [460.0, 480.0]),
+    ("combine_assist", [640.0, 225.0]),
+    ("measure", [437.0, 344.0]),
+];
+
+/// Windows whose size the person sets by dragging keep their own size.
+const FREE_SIZE_WINDOWS: &[&str] = &["preview"];
+/// A remembered size never takes more than this share of the app window.
+const STEADY_MAX_SCREEN_SHARE: f32 = 0.9;
+
+/// The person's rule: a dialog keeps its size when options inside it are turned on or off. Each
+/// dialog remembers the largest size it has reached (window_sizes.json in the settings folder, so
+/// across sessions too) and never draws smaller than that; a section that appears fills room that
+/// is already there, and one that goes leaves the window as it was. `min_size` is the outer size
+/// (title bar and margins included), the same thing the window's stored area size measures, so the
+/// remembered size and the drawn size settle on the same value.
+fn steady_size<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui::Window<'a> {
+    let id = egui::Id::new(("bf_win", key));
+    let w = w.id(id);
+    if FREE_SIZE_WINDOWS.contains(&key) {
+        return w;
+    }
+    let sizes = steady_sizes();
+    let mut sizes = sizes.lock().unwrap();
+    let screen = ctx.content_rect().size() * STEADY_MAX_SCREEN_SHARE;
+    if let Some(seen) = egui::AreaState::load(ctx, id).and_then(|s| s.size) {
+        let seen = seen.min(screen);
+        let old = sizes.get(key).copied().unwrap_or([0.0, 0.0]);
+        let grown = [old[0].max(seen.x), old[1].max(seen.y)];
+        if grown[0] > old[0] + 0.5 || grown[1] > old[1] + 0.5 {
+            sizes.insert(key.to_string(), grown);
+            if !STEADY_NO_SAVE.load(std::sync::atomic::Ordering::Relaxed) {
+                crate::i18n::save_json("window_sizes.json", &*sizes);
+            }
+        }
+    }
+    match sizes.get(key) {
+        Some(s) => w.min_size(egui::vec2(s[0], s[1]).min(screen)),
+        None => w,
+    }
+}
+
+/// Set for --screenshot runs: checks start from no remembered sizes and leave the person's alone.
+pub static STEADY_NO_SAVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn steady_sizes() -> &'static std::sync::Mutex<std::collections::HashMap<String, [f32; 2]>> {
+    static SIZES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, [f32; 2]>>> = std::sync::OnceLock::new();
+    SIZES.get_or_init(|| {
+        let saved: Option<std::collections::HashMap<String, [f32; 2]>> =
+            if STEADY_NO_SAVE.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("BEAMFORGE_DUMP_SIZES").is_some() {
+                None
+            } else {
+                crate::i18n::load_json("window_sizes.json")
+            };
+        let mut sizes = saved.unwrap_or_default();
+        // measuring runs start from nothing, so they see each window's own size
+        if std::env::var_os("BEAMFORGE_DUMP_SIZES").is_none() {
+            for (k, s) in LARGEST_SIZES {
+                let e = sizes.entry(k.to_string()).or_insert(*s);
+                *e = [e[0].max(s[0]), e[1].max(s[1])];
+            }
+        }
+        std::sync::Mutex::new(sizes)
+    })
+}
+
+/// The interface font of each system, as the person asked: San Francisco on macOS, Segoe UI on
+/// Windows, the desktop's own sans-serif on Linux (whatever fontconfig picks, e.g. Ubuntu, Cantarell
+/// or Noto Sans). egui's built-in fonts stay behind them for symbols the system font lacks (◆ ✓ ●).
+/// A missing file is skipped, so a system without it keeps the built-in look.
+pub fn use_system_fonts(ctx: &egui::Context) {
+    let (sans, mono) = system_font_files();
+    let mut fonts = egui::FontDefinitions::default();
+    for (name, family, files) in [("system-sans", egui::FontFamily::Proportional, sans), ("system-mono", egui::FontFamily::Monospace, mono)] {
+        if let Some(bytes) = files.iter().find_map(|f| std::fs::read(f).ok()) {
+            fonts.font_data.insert(name.to_owned(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+            fonts.families.entry(family).or_default().insert(0, name.to_owned());
+        }
+    }
+    ctx.set_fonts(fonts);
+}
+
+fn system_font_files() -> (Vec<String>, Vec<String>) {
+    if cfg!(target_os = "macos") {
+        (vec!["/System/Library/Fonts/SFNS.ttf".into(), "/System/Library/Fonts/HelveticaNeue.ttc".into()], vec!["/System/Library/Fonts/SFNSMono.ttf".into(), "/System/Library/Fonts/Menlo.ttc".into()])
+    } else if cfg!(windows) {
+        let dir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".into());
+        (vec![format!("{dir}\\Fonts\\segoeui.ttf"), format!("{dir}\\Fonts\\arial.ttf")], vec![format!("{dir}\\Fonts\\consola.ttf"), format!("{dir}\\Fonts\\cour.ttf")])
+    } else {
+        let fc = |pattern: &str| {
+            std::process::Command::new("fc-match")
+                .args(["-f", "%{file}", pattern])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|f| !f.is_empty())
+        };
+        let mut sans: Vec<String> = fc("sans-serif").into_iter().collect();
+        sans.extend(["/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/noto/NotoSans-Regular.ttf"].map(String::from));
+        let mut mono: Vec<String> = fc("monospace").into_iter().collect();
+        mono.extend(["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf".to_string()]);
+        (sans, mono)
+    }
+}
+
+/// The sizes remembered so far, as JSON (for measuring the built-in starting sizes).
+pub fn dump_sizes() -> String {
+    serde_json::to_string(&*steady_sizes().lock().unwrap()).unwrap_or_default()
 }

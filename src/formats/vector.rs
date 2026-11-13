@@ -175,12 +175,73 @@ fn entities_of(pairs: &[(i32, String)]) -> Vec<Ent> {
     v
 }
 
-pub fn dxf(bytes: &[u8]) -> Result<Vec<Piece>, String> {
-    let text = String::from_utf8_lossy(bytes);
-    if !text.contains("SECTION") {
-        return Err(tr("Il file DXF non è valido (forse è un DXF binario o non è un DXF).").into());
+/// The first bytes of a binary DXF ("AutoCAD Binary DXF\r\n" + SUB + NUL).
+const BINARY_DXF_SENTINEL: &[u8] = b"AutoCAD Binary DXF\r\n\x1a\0";
+
+/// A binary DXF as the same (group code, value) pairs the text form gives, so one reader serves both.
+/// Group codes are 2 bytes little-endian (R13 and later; R12's 1-byte codes with 255 = "2 more bytes
+/// follow" are read too); the value's type comes from the code's range, as in AutoCAD's DXF reference.
+fn read_binary_pairs(bytes: &[u8]) -> Option<Vec<(i32, String)>> {
+    let mut i = BINARY_DXF_SENTINEL.len();
+    // R12 writes 1-byte codes: the first one is 0 followed directly by "SECTION"
+    let one_byte = bytes.get(i + 1).is_some_and(|b| *b == b'S');
+    let mut out = Vec::new();
+    let take = |i: &mut usize, n: usize| -> Option<&[u8]> {
+        let s = bytes.get(*i..*i + n)?;
+        *i += n;
+        Some(s)
+    };
+    while i < bytes.len() {
+        let code = if one_byte {
+            let c = *take(&mut i, 1)?.first()? as i32;
+            if c == 255 { i16::from_le_bytes(take(&mut i, 2)?.try_into().ok()?) as i32 } else { c }
+        } else {
+            i16::from_le_bytes(take(&mut i, 2)?.try_into().ok()?) as i32
+        };
+        let string = |i: &mut usize| -> Option<String> {
+            let end = bytes.get(*i..)?.iter().position(|b| *b == 0)?;
+            let s = String::from_utf8_lossy(&bytes[*i..*i + end]).into_owned();
+            *i += end + 1;
+            Some(s)
+        };
+        let f64v = |i: &mut usize| -> Option<String> { Some(f64::from_le_bytes(take(i, 8)?.try_into().ok()?).to_string()) };
+        let i16v = |i: &mut usize| -> Option<String> { Some(i16::from_le_bytes(take(i, 2)?.try_into().ok()?).to_string()) };
+        let i32v = |i: &mut usize| -> Option<String> { Some(i32::from_le_bytes(take(i, 4)?.try_into().ok()?).to_string()) };
+        let i64v = |i: &mut usize| -> Option<String> { Some(i64::from_le_bytes(take(i, 8)?.try_into().ok()?).to_string()) };
+        let chunk = |i: &mut usize| -> Option<String> {
+            let n = *take(i, 1)?.first()? as usize;
+            take(i, n)?;
+            Some(String::new())
+        };
+        let value = match code {
+            0..=9 | 100..=109 | 300..=309 | 320..=369 | 390..=399 | 410..=419 | 430..=439 | 470..=481 | 999 | 1000..=1003 | 1005..=1009 => string(&mut i)?,
+            310..=319 | 1004 => chunk(&mut i)?,
+            10..=59 | 110..=149 | 210..=239 | 460..=469 | 1010..=1059 => f64v(&mut i)?,
+            60..=79 | 170..=179 | 270..=289 | 370..=389 | 400..=409 | 1060..=1070 => i16v(&mut i)?,
+            90..=99 | 420..=429 | 440..=459 | 1071 => i32v(&mut i)?,
+            160..=169 => i64v(&mut i)?,
+            290..=299 => take(&mut i, 1)?.first()?.to_string(),
+            _ => return if out.is_empty() { None } else { Some(out) },
+        };
+        let end = code == 0 && value == "EOF";
+        out.push((code, value));
+        if end {
+            break;
+        }
     }
-    let pairs = read_pairs(&text);
+    Some(out)
+}
+
+pub fn dxf(bytes: &[u8]) -> Result<Vec<Piece>, String> {
+    let pairs = if bytes.starts_with(BINARY_DXF_SENTINEL) {
+        read_binary_pairs(bytes).ok_or_else(|| tr("Il file DXF non è valido (forse è un DXF binario o non è un DXF)."))?
+    } else {
+        let text = String::from_utf8_lossy(bytes);
+        if !text.contains("SECTION") {
+            return Err(tr("Il file DXF non è valido (forse è un DXF binario o non è un DXF).").into());
+        }
+        read_pairs(&text)
+    };
     // split sections
     let mut sections: HashMap<String, Vec<(i32, String)>> = HashMap::new();
     let mut i = 0;
@@ -725,5 +786,29 @@ mod tests {
         let p = gcode(b"G21 G90\nG0 X0 Y0\nM4 S500\nG1 X10 Y0 F600\nG1 X10 Y10\nM5\nG0 X50 Y50\n").unwrap();
         assert_eq!(p.len(), 1);
         assert_eq!(p[0].paths[0].pts.len(), 3);
+    }
+}
+
+#[cfg(test)]
+mod dxf_samples {
+    /// Reads every file listed (one path per line) in BEAMFORGE_DXF_LIST and reports what each gives.
+    /// `BEAMFORGE_DXF_LIST=list.txt cargo test dxf_samples -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn dxf_samples() {
+        let Ok(list) = std::env::var("BEAMFORGE_DXF_LIST") else { return };
+        for path in std::fs::read_to_string(list).unwrap().lines().filter(|l| !l.is_empty()) {
+            let bytes = match std::fs::read(path) {
+                Ok(b) => b,
+                Err(e) => {
+                    println!("READ FAIL {path}: {e}");
+                    continue;
+                }
+            };
+            match super::dxf(&bytes) {
+                Ok(p) => println!("OK {} pieces, {} paths  {path}", p.len(), p.iter().map(|x| x.paths.len()).sum::<usize>()),
+                Err(e) => println!("ERR {e}  {path}"),
+            }
+        }
     }
 }

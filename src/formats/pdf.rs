@@ -736,3 +736,22 @@ mod tests {
         assert_eq!(p[0].paths[0].pts.len(), 4);
     }
 }
+
+#[cfg(test)]
+mod ai_sample {
+    /// Imports the one file named by BEAMFORGE_AI_FILE and prints how long it took and what came out.
+    /// `BEAMFORGE_AI_FILE=x.ai cargo test ai_sample -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn ai_sample() {
+        let Ok(path) = std::env::var("BEAMFORGE_AI_FILE") else { return };
+        let bytes = std::fs::read(&path).unwrap();
+        let t = std::time::Instant::now();
+        let r = super::import(&bytes);
+        let ms = t.elapsed().as_millis();
+        match r {
+            Ok(p) => println!("RESULT OK {} pieces, {} paths, {} ms", p.len(), p.iter().map(|x| x.paths.len()).sum::<usize>(), ms),
+            Err(e) => println!("RESULT ERR {e} ({ms} ms)"),
+        }
+    }
+}

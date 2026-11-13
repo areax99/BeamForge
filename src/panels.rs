@@ -176,13 +176,12 @@ fn top_frame() -> egui::Frame {
 pub fn menu_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
     egui::Panel::top("menu").frame(theme::bar_frame(crate::theme::p().field).inner_margin(egui::Margin::symmetric(8, 3))).show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
-            // The app menu on Linux and Windows: the actions the original gives an app-menu role (MECHANICS.md, "Menu BeamForge").
+            // The app menu on Linux and Windows: what the running original shows in its app menu
+            // (About, Quit; Settings is under Modifica: MECHANICS.md round 65).
             ui.menu_button(egui::RichText::new("BeamForge").color(ACCENT).strong().size(14.0), |ui| {
                 let ctx = ui.ctx().clone();
                 for row in [
                     Some(("about", tr("Informazioni su BeamForge"))),
-                    None,
-                    Some(("settings", tr("Impostazioni…"))),
                     None,
                     Some(("quit", tr("Esci da BeamForge"))),
                 ] {
@@ -372,6 +371,10 @@ pub fn menu_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
                 }
             });
             ui.menu_button(tr("Aiuto"), |ui| {
+                if ui.button(tr("Aggiornamenti…")).clicked() {
+                    let ctx = ui.ctx().clone();
+                    crate::sysmenu::run(app, &ctx, "updates");
+                }
                 if ui.button(tr("Informazioni su BeamForge")).clicked() {
                     app.show_about = true;
                 }
@@ -430,12 +433,15 @@ fn window_buttons(ui: &mut egui::Ui) {
     }
 }
 
+/// Width of the edge band that resizes a frameless window (estimated, MECHANICS.md round 59).
+pub(crate) const RESIZE_BAND_PX: f32 = 5.0;
+
 /// Without a system frame (Linux, Windows) the window is resized from a thin band along its edges.
 pub fn window_resize_edges(ctx: &egui::Context) {
     if cfg!(target_os = "macos") || ctx.input(|i| i.viewport().maximized.unwrap_or(false)) {
         return;
     }
-    const BAND: f32 = 5.0;
+    const BAND: f32 = RESIZE_BAND_PX;
     let screen = ctx.content_rect();
     let Some(p) = ctx.input(|i| i.pointer.hover_pos()) else { return };
     let (l, r) = (p.x - screen.left() < BAND, screen.right() - p.x < BAND);
@@ -631,7 +637,7 @@ fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
 }
 
 /// Room left for the macOS close/minimise/zoom buttons at the toolbar's left end (estimated).
-const MAC_WINDOW_BUTTONS_WIDTH: f32 = 70.0;
+pub(crate) const MAC_WINDOW_BUTTONS_WIDTH: f32 = 70.0;
 
 pub fn main_toolbar(app: &mut BeamForge, ui: &mut egui::Ui) {
     egui::Panel::top("main_toolbar").frame(top_frame()).show(ui, |ui| {
@@ -1800,7 +1806,13 @@ fn quick_edit_disabled(ui: &mut egui::Ui) {
             ui.label(tr("Potenza min. (%)"));
             ui.add(crate::i18n::dv(&mut z));
             ui.end_row();
+            // the same rows as with a layer picked, so the dock keeps its height when the first
+            // layer appears (the person's request: adding layers must not stretch the panel)
+            ui.label(tr("Modalità"));
+            egui::ComboBox::from_id_salt("quick_mode_off").selected_text(mode_it(CutMode::Line)).show_ui(ui, |_| {});
+            ui.end_row();
         });
+        let _ = ui.button(tr("Altre impostazioni…"));
     });
 }
 
@@ -2891,7 +2903,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
             // same order as the original's About page (HelpDialog::HelpDialog 0x100c1a2b8): who made it,
             // when it was built (UTC), the licence, then the third-party components with their licences.
             // The original's "License Validation Date" lines are left out: BeamForge needs no licence key.
-            ui.heading(egui::RichText::new("◆ BeamForge 1.0").color(ACCENT));
+            ui.heading(egui::RichText::new(format!("◆ BeamForge {}", crate::update::current())).color(ACCENT));
             ui.label(tr("Software libero per progettare e controllare laser."));
             ui.add_space(6.0);
             ui.label("Copyright © 2026 servimmagine");
@@ -2917,7 +2929,171 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
         }
     }
 
+    updates_window(app, ctx);
     crate::devices::window(app, ctx);
     crate::combine::assistant_window(app, ctx);
     crate::preview::window(app, ctx);
+}
+
+/// Help > Updates (CheckForUpdatesDialog::download_complete 0x10079e06c: "Your version is up to date." /
+/// "A newer version (%1) is available - would you like to download it?"). The daily quiet check
+/// opens it only when something newer was found.
+fn updates_window(app: &mut BeamForge, ctx: &egui::Context) {
+    use crate::update::State;
+    let state = app.updates.state();
+    if app.updates.quiet && matches!(state, State::Newer(_) | State::Installed { .. } | State::InstallFailed { .. }) {
+        app.updates.quiet = false;
+        app.show_updates = true;
+    }
+    if !app.show_updates {
+        return;
+    }
+    let (mut install, mut restart, mut later) = (None, None, false);
+    let busy = matches!(state, State::Downloading { .. } | State::Installing(_));
+    let mut open = true;
+    theme::centered(ctx, "updates", egui::Window::new(tr("Aggiornamenti")).open(&mut open).resizable(false).collapsible(false).default_width(460.0)).show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(tr("Versione installata:")).strong());
+            ui.label(crate::update::current());
+            if crate::update::current().contains("beta") {
+                ui.label(egui::RichText::new(" BETA ").color(Color32::WHITE).background_color(ACCENT).small());
+            }
+        });
+        ui.add_space(8.0);
+        match &state {
+            State::Idle | State::Checking => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(tr("Controllo su GitHub…"));
+                });
+            }
+            State::UpToDate => {
+                ui.label(tr("La tua versione è aggiornata."));
+            }
+            State::NoReleases => {
+                ui.label(tr("Non ci sono ancora versioni pubblicate su GitHub."));
+            }
+            State::Failed(e) => {
+                ui.label(tr("Impossibile controllare gli aggiornamenti. Verifica la connessione a internet."));
+                ui.label(egui::RichText::new(e).small().color(crate::theme::p().text_dim));
+            }
+            State::Newer(r) => {
+                ui.label(egui::RichText::new(crate::i18n::trf("È disponibile una nuova versione ({}).", &[&r.version])).strong().color(ACCENT));
+                if r.beta {
+                    ui.label(egui::RichText::new(tr("È una versione beta: prova sempre l'anteprima prima di usare il laser.")).color(crate::theme::p().text_dim));
+                }
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(&r.name).strong());
+                if !r.notes.trim().is_empty() {
+                    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+                        ui.label(r.notes.trim());
+                    });
+                }
+                ui.add_space(6.0);
+                let self_install = crate::update::can_self_install();
+                ui.horizontal(|ui| {
+                    if let Some((file, url)) = &r.asset {
+                        if self_install {
+                            if ui.add(egui::Button::new(egui::RichText::new(tr("Scarica e installa")).color(Color32::WHITE)).fill(ACCENT)).on_hover_text(file).clicked() {
+                                install = Some(r.clone());
+                            }
+                        } else if ui.add(egui::Button::new(egui::RichText::new(tr("Scarica")).color(Color32::WHITE)).fill(ACCENT)).on_hover_text(file).clicked() {
+                            ctx.open_url(egui::OpenUrl::new_tab(url));
+                        }
+                    }
+                    if ui.button(tr("Apri la pagina della versione")).clicked() {
+                        ctx.open_url(egui::OpenUrl::new_tab(&r.page));
+                    }
+                });
+                if let (Some(_), Some((path, admin, elsewhere))) = (&r.asset, crate::update::install_info()) {
+                    let dim = crate::theme::p().text_dim;
+                    if elsewhere {
+                        ui.label(egui::RichText::new(crate::i18n::trf("Verrà installata in {} e aperta da lì.", &[&path.display()])).small().color(dim));
+                    }
+                    if admin {
+                        ui.label(egui::RichText::new(tr("La cartella è protetta: il sistema ti chiederà la password di amministratore.")).small().color(dim));
+                    }
+                }
+                if r.asset.is_some() && !self_install {
+                    ui.label(egui::RichText::new(tr("Questa copia non può aggiornarsi da sola (cartella protetta o versione di sviluppo): scarica il pacchetto e sostituiscilo a mano.")).small().color(crate::theme::p().text_dim));
+                }
+                if r.asset.is_none() {
+                    ui.label(egui::RichText::new(tr("Questa versione non ha ancora un pacchetto per il tuo sistema.")).small().color(crate::theme::p().text_dim));
+                }
+            }
+            State::Downloading { release, file, total } => {
+                let done = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
+                ui.label(crate::i18n::trf("Download di BeamForge {}…", &[&release.version]));
+                let mb = |b: u64| b as f64 / 1_048_576.0;
+                let bar = if *total > 0 {
+                    egui::ProgressBar::new((done as f32 / *total as f32).min(1.0)).text(format!("{:.1} / {:.1} MB", mb(done), mb(*total)))
+                } else {
+                    egui::ProgressBar::new(0.0).animate(true).text(format!("{:.1} MB", mb(done)))
+                };
+                ui.add(bar.desired_width(420.0));
+                ctx.request_repaint_after(std::time::Duration::from_millis(200));
+            }
+            State::Installing(release) => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(crate::i18n::trf("Installazione di BeamForge {}…", &[&release.version]));
+                });
+            }
+            State::Installed { version, relaunch } => {
+                ui.label(egui::RichText::new(crate::i18n::trf("BeamForge {} è installato.", &[version])).strong().color(ACCENT));
+                ui.label(tr("Riavvia per usare la nuova versione. Se ci sono modifiche non salvate, BeamForge te lo chiede prima."));
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::Button::new(egui::RichText::new(tr("Riavvia ora")).color(Color32::WHITE)).fill(ACCENT)).clicked() {
+                        restart = Some(relaunch.clone());
+                    }
+                    if ui.button(tr("Più tardi")).clicked() {
+                        later = true;
+                    }
+                });
+            }
+            State::InstallFailed { release, error } => {
+                ui.label(tr("L'aggiornamento non è riuscito: la versione installata non è stata toccata."));
+                ui.label(egui::RichText::new(error).small().color(crate::theme::p().text_dim));
+                ui.horizontal(|ui| {
+                    if ui.button(tr("Riprova")).clicked() {
+                        install = Some(release.clone());
+                    }
+                    if ui.button(tr("Apri la pagina della versione")).clicked() {
+                        ctx.open_url(egui::OpenUrl::new_tab(&release.page));
+                    }
+                });
+            }
+        }
+        ui.add_space(10.0);
+        ui.separator();
+        ui.horizontal(|ui| {
+            let checking = busy || matches!(state, State::Checking | State::Installed { .. });
+            if ui.add_enabled(!checking, egui::Button::new(tr("Controlla di nuovo"))).clicked() {
+                app.updates.start(ctx, false);
+            }
+            if ui.button(tr("Tutte le versioni")).clicked() {
+                ctx.open_url(egui::OpenUrl::new_tab(crate::update::RELEASES_PAGE));
+            }
+        });
+        let mut auto = crate::i18n::load_json::<bool>("update_auto.json").unwrap_or(true);
+        if ui.checkbox(&mut auto, tr("Controlla gli aggiornamenti una volta al giorno")).changed() {
+            crate::i18n::save_json("update_auto.json", &auto);
+        }
+    });
+    if let Some(r) = install {
+        app.updates.install(ctx, r);
+    }
+    if let Some(path) = restart {
+        // started as BeamForge exits (on_exit), after the save question if one is needed
+        app.relaunch_on_exit = Some(path);
+        app.request_close(crate::app::PendingClose::Quit, ctx);
+    }
+    // a download or install keeps going if the window is closed; it reopens when it ends
+    if !open || later {
+        app.show_updates = false;
+        if busy {
+            app.updates.quiet = true;
+        }
+    }
 }

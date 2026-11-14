@@ -23,7 +23,6 @@ const TRAVEL: Color32 = Color32::from_rgb(244, 150, 150);
 
 pub struct Preview {
     pub job: Job,
-    pub gcode: String,
     /// 0..1 of the job's time
     pub progress: f32,
     /// A test's own document (Test intervallo / materiale); None previews the project.
@@ -53,7 +52,7 @@ pub struct Preview {
 
 impl Preview {
     /// `project` is the open document; a test's own `doc` is used instead when given.
-    pub fn new(job: Job, gcode: String, doc: Option<Document>, project: &Document) -> Self {
+    pub fn new(job: Job, doc: Option<Document>, project: &Document) -> Self {
         let layers_doc = doc.as_ref().unwrap_or(project);
         // the kinds of work, each with the layers doing it, in the order they first burn
         let colored = doc.is_none();
@@ -103,7 +102,7 @@ impl Preview {
             }
             ends.push(t);
         }
-        Self { job, gcode, progress: 1.0, doc, ends, total: t, cut_time: cut, playing: false, speed: PLAY_SPEED_DEFAULT, show_traversals: false, shade_by_power: false, invert: false, show_legend: true, legend, colored, raster: None, view_zoom: 1.0, view_center: None }
+        Self { job, progress: 1.0, doc, ends, total: t, cut_time: cut, playing: false, speed: PLAY_SPEED_DEFAULT, show_traversals: false, shade_by_power: false, invert: false, show_legend: true, legend, colored, raster: None, view_zoom: 1.0, view_center: None }
     }
 
     /// Zoom the view in on the job's middle (1 = whole job).

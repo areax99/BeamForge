@@ -11,16 +11,6 @@ pub enum StartFrom {
     CurrentPosition,
 }
 
-impl StartFrom {
-    pub fn label(self) -> &'static str {
-        match self {
-            StartFrom::AbsoluteCoords => "Absolute Coords",
-            StartFrom::UserOrigin => "User Origin",
-            StartFrom::CurrentPosition => "Current Position",
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct JobOptions {
     pub start_from: StartFrom,
@@ -117,10 +107,10 @@ impl Job {
         d
     }
 
-    /// Seconds; constant speed per move (acceleration not modelled).
     /// Job time with acceleration, like the original's MotionPlanner (0x100c0215c): each move
     /// speeds up and slows down at `accel` mm/s²; the speed carried through a corner is scaled
     /// by the cosine of the turn (0 for 90° or more). Rapids run at `rapid_speed`.
+    #[cfg(test)]
     pub fn estimate_seconds(&self, rapid_speed: f64, accel: f64) -> f64 {
         self.move_seconds(rapid_speed, accel).iter().sum()
     }
@@ -155,6 +145,7 @@ impl Job {
     }
 
     /// Seconds each move takes, with the same motion model as `estimate_seconds`.
+    #[cfg(test)]
     pub fn move_seconds(&self, rapid_speed: f64, accel: f64) -> Vec<f64> {
         let sim = Sim { rapid: rapid_speed, cut_accel: [accel; 2], engrave_accel: [accel; 2], ..Sim::default() };
         self.move_seconds_sim(&sim)

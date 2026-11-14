@@ -1044,7 +1044,7 @@ pub fn numeric_bar(app: &mut RayEtch, ui: &mut egui::Ui) {
             });
             nb_grid("textopts2").show(ui, |ui| {
                 nb_label(ui, tr("Testo"));
-                changed |= ui.add_sized(vec2(150.0, NB_ROW), egui::TextEdit::singleline(&mut app.new_text).vertical_align(egui::Align::Center)).changed();
+                changed |= ui.add_sized(vec2(150.0, NB_ROW), egui::TextEdit::singleline(&mut app.new_text).align(egui::Align2::LEFT_CENTER)).changed();
                 ui.end_row();
                 nb_label(ui, tr("Lati"));
                 nb_field(ui, 60.0, crate::i18n::dv(&mut app.polygon_sides).range(3..=64)).on_hover_text(tr("Lati del poligono"));
@@ -1213,7 +1213,7 @@ fn shapes_button(app: &mut RayEtch, ui: &mut egui::Ui) {
     }
     let ctx = ui.ctx().clone();
     let pos = menu_position(&ctx, r, menu_size(crate::app::SHAPE_TOOLS.len(), 170.0));
-    let area = egui::Area::new(egui::Id::new("shapes_menu")).order(egui::Order::Foreground).fixed_pos(pos).show(&ctx, |ui| {
+    let area = egui::Area::new(egui::Id::unique("shapes_menu")).order(egui::Order::Foreground).fixed_pos(pos).show(&ctx, |ui| {
         egui::Frame::popup(ui.style()).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
             ui.set_min_width(170.0);
             for t in crate::app::SHAPE_TOOLS {
@@ -1288,7 +1288,7 @@ fn combine_button_inner(app: &mut RayEtch, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let mut pick: Option<Option<CombineOp>> = None;
     let pos = menu_position(&ctx, rect, menu_size(4, 230.0));
-    let area = egui::Area::new(egui::Id::new("combine_menu")).order(egui::Order::Foreground).fixed_pos(pos).show(&ctx, |ui| {
+    let area = egui::Area::new(egui::Id::unique("combine_menu")).order(egui::Order::Foreground).fixed_pos(pos).show(&ctx, |ui| {
         egui::Frame::popup(ui.style()).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
             let rows: [(Option<CombineOp>, &str); 4] = [
                 (Some(CombineOp::Union), CombineOp::Union.label()),
@@ -2865,7 +2865,7 @@ pub fn windows(app: &mut RayEtch, ctx: &egui::Context) {
         let mut changed = false;
         let mut tab = app.editor_tab;
         let manual_tab_count: usize = app.doc.shapes.iter().filter(|s| s.layer == l).map(|s| s.tabs.len()).sum();
-        let confirm_id = egui::Id::new("confirm_auto_tabs");
+        let confirm_id = egui::Id::unique("confirm_auto_tabs");
         let mut confirm_auto = ctx.data(|d| d.get_temp::<bool>(confirm_id)).unwrap_or(false);
         let mut action: Option<&'static str> = None;
         let dv = crate::i18n::dv;

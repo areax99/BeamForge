@@ -394,7 +394,6 @@ fn push_layer(doc: &mut Document, mut cs: CutSetting) -> usize {
 
 #[derive(Clone, Copy)]
 enum Anchor {
-    Start,
     Middle,
     End,
 }
@@ -403,7 +402,7 @@ fn add_label(doc: &mut Document, text: &str, height: f64, layer: usize, at: P2, 
     add_label_anchored(doc, text, height, layer, at, rot, Anchor::Middle);
 }
 
-/// Text outline `height` mm tall, turned `rot` degrees, placed so its start / middle / end (along
+/// Text outline `height` mm tall, turned `rot` degrees, placed so its middle / end (along
 /// the reading direction) sits on `at`, centred across it.
 fn add_label_anchored(doc: &mut Document, text: &str, height: f64, layer: usize, at: P2, rot: f64, anchor: Anchor) {
     let font = crate::text::fonts()[0].name.clone();
@@ -418,7 +417,6 @@ fn add_label_anchored(doc: &mut Document, text: &str, height: f64, layer: usize,
         }
     }
     let along = match anchor {
-        Anchor::Start => b.min[0],
         Anchor::Middle => b.center()[0],
         Anchor::End => b.max[0],
     };

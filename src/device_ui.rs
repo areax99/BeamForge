@@ -301,7 +301,7 @@ pub fn window(app: &mut RayEtch, ctx: &egui::Context) {
     let mut edit_checklist = false;
     let title = trf("Impostazioni della periferica per {}", &[&d.name]);
     let mut sel_row = app.scan_row;
-    theme::centered(ctx, "device", egui::Window::new(title).id(egui::Id::new("device_win")).open(&mut open).resizable(false).collapsible(false).fixed_size(SIZE)).show(ctx, |ui| {
+    theme::centered(ctx, "device", egui::Window::new(title).id(egui::Id::unique("device_win")).open(&mut open).resizable(false).collapsible(false).fixed_size(SIZE)).show(ctx, |ui| {
         ui.horizontal(|ui| {
             for (i, t) in TABS.iter().enumerate() {
                 if ui.add(egui::Button::new(egui::RichText::new(tr(t)).size(14.0)).selected(tab == i).min_size(vec2(0.0, 30.0))).clicked() {

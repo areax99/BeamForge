@@ -108,18 +108,6 @@ pub fn fit_view(app: &mut RayEtch, area: Rect) {
     app.view.offset = vec2(ox, oy);
 }
 
-pub fn zoom_to(app: &mut RayEtch, area: Rect, b: BBox) {
-    if !b.is_valid() {
-        return;
-    }
-    let w = (b.w() as f32).max(1.0);
-    let h = (b.h() as f32).max(1.0);
-    let zoom = ((area.width() / w).min(area.height() / h) * ZOOM_FIT_MARGIN).clamp(ZOOM_MIN, ZOOM_MAX);
-    app.view.zoom = zoom;
-    let c = b.center();
-    app.view.offset = vec2(area.width() / 2.0 - c[0] as f32 * zoom, area.height() / 2.0 + c[1] as f32 * zoom);
-}
-
 /// The rotate handle sits this many screen pixels outside each corner, across and down
 /// (SelectionTool::Draw 0x100779234, handle type 4: ±8.0 on both axes).
 pub(crate) const ROTATE_HANDLE_OFFSET_PX: f32 = 8.0;

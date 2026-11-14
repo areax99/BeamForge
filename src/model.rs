@@ -348,17 +348,6 @@ pub enum OriginCorner {
     RearRight,
 }
 
-impl OriginCorner {
-    pub fn label(self) -> &'static str {
-        match self {
-            OriginCorner::FrontLeft => "Front left",
-            OriginCorner::RearLeft => "Rear left",
-            OriginCorner::FrontRight => "Front right",
-            OriginCorner::RearRight => "Rear right",
-        }
-    }
-}
-
 impl Device {
     /// Whether the controller has a separate minimum power (CutSettingEdit::UpdatePowerControls
     /// 0x100b86830 asks the protocol; GRBL has only S, so no). RayEtch drives GRBL devices
@@ -783,18 +772,6 @@ impl Geometry {
         }
     }
 
-    pub fn kind_name(&self) -> &'static str {
-        match self {
-            Geometry::Rect { .. } => "Rectangle",
-            Geometry::Ellipse { .. } => "Ellipse",
-            Geometry::Polygon { .. } => "Polygon",
-            Geometry::Star { middle: None, .. } => "Star",
-            Geometry::Star { .. } => "DualStar",
-            Geometry::Path { .. } => "Path",
-            Geometry::Text { .. } => "Text",
-            Geometry::Image { .. } => "Image",
-        }
-    }
 }
 
 impl Shape {
@@ -819,7 +796,7 @@ impl Shape {
             if pl.closed && pts.len() > 2 {
                 pts.push(pts[0]);
             }
-            let total: f64 = pts.windows(2).map(|w| ((w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]))).sum();
+            let total: f64 = pts.windows(2).map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1])).sum();
             if total < 1e-9 {
                 continue;
             }

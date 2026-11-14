@@ -15,8 +15,6 @@ use std::io::Write;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
-/// Port open timeout, ms (`mov w1,#0x5dc` before Connection::Open, 0x10083b8e4).
-pub const OPEN_TIMEOUT_MS: u64 = 1500;
 /// Pause between attempts and after closing a port, ms (`QThread::msleep(0x32)`, 0x10083b928).
 pub const RETRY_PAUSE_MS: u64 = 50;
 /// How long to wait for the controller's greeting, ms (`cmp x0,#0x7cf; b.gt`, 0x10083bc40).

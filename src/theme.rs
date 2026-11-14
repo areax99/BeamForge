@@ -4,7 +4,6 @@
 use eframe::egui::{self, Color32, CornerRadius, Stroke};
 
 pub const ACCENT: Color32 = Color32::from_rgb(240, 120, 40);
-pub const ACCENT_DARK: Color32 = Color32::from_rgb(150, 62, 18);
 
 /// Every colour that changes between the dark and the light theme.
 pub struct Palette {
@@ -263,8 +262,8 @@ pub fn bar_frame(fill: Color32) -> egui::Frame {
 /// left, the title bar stays put and any growth only goes down and to the right. The centring is
 /// done once, from the window's known size, during the first frames after it opens.
 pub fn centered<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui::Window<'a> {
-    let id = egui::Id::new(("bf_dialog_shown", key));
-    let opened_id = egui::Id::new(("bf_dialog_opened", key));
+    let id = egui::Id::unique(("bf_dialog_shown", key));
+    let opened_id = egui::Id::unique(("bf_dialog_opened", key));
     let pass = ctx.cumulative_pass_nr();
     let last: Option<u64> = ctx.data(|d| d.get_temp(id));
     ctx.data_mut(|d| d.insert_temp(id, pass));
@@ -279,7 +278,7 @@ pub fn centered<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui
     let area = ctx.content_rect();
     // RAYETCH_TRACE_WIN=1 (for testing): print where each dialog sits on every frame
     if std::env::var_os("RAYETCH_TRACE_WIN").is_some()
-        && let Some(st) = egui::AreaState::load(ctx, egui::Id::new(("bf_win", key)))
+        && let Some(st) = egui::AreaState::load(ctx, egui::Id::unique(("bf_win", key)))
     {
         println!("win {key} pass {pass} rect {:?} size {size:?} frame {frame} opened {opened}", st.rect());
     }
@@ -294,7 +293,7 @@ pub fn centered<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui
     // stored state itself is moved too.
     if frame <= opened + CENTRE_PASSES {
         let pos = place(size);
-        let win_id = egui::Id::new(("bf_win", key));
+        let win_id = egui::Id::unique(("bf_win", key));
         if let Some(mut st) = egui::AreaState::load(ctx, win_id) {
             st.pivot = egui::Align2::LEFT_TOP;
             st.pivot_pos = Some(pos);
@@ -345,7 +344,7 @@ const STEADY_MAX_SCREEN_SHARE: f32 = 0.9;
 /// (title bar and margins included), the same thing the window's stored area size measures, so the
 /// remembered size and the drawn size settle on the same value.
 fn steady_size<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> (egui::Window<'a>, egui::Vec2) {
-    let id = egui::Id::new(("bf_win", key));
+    let id = egui::Id::unique(("bf_win", key));
     let w = w.id(id);
     let seen_now = egui::AreaState::load(ctx, id).and_then(|s| s.size).unwrap_or(egui::Vec2::ZERO);
     if FREE_SIZE_WINDOWS.contains(&key) {

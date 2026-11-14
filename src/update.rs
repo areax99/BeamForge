@@ -15,7 +15,6 @@
 use eframe::egui;
 use std::sync::{Arc, Mutex};
 
-pub const REPO: &str = "areax99/RayEtch";
 pub const RELEASES_PAGE: &str = "https://github.com/areax99/RayEtch/releases";
 const API: &str = "https://api.github.com/repos/areax99/RayEtch/releases?per_page=20";
 /// The automatic check waits this long after start (runUpdateCheck: 2 s).

@@ -249,7 +249,7 @@ fn material_window(app: &mut RayEtch, ctx: &egui::Context) {
     // Centro X / Y only mean something with absolute coordinates (MaterialTest::showEvent 0x100d3fc18)
     let center_enabled = app.job_opts.start_from == crate::gcode::StartFrom::AbsoluteCoords;
     let (ow, oh) = t.output_size(&app.doc);
-    let editing_id = egui::Id::new("mt_editing");
+    let editing_id = egui::Id::unique("mt_editing");
     let mut editing: Option<usize> = ctx.data(|d| d.get_temp::<Option<usize>>(editing_id)).flatten();
     let mut sel = app.material_preset_sel.clone();
     let mut save_preset = false;

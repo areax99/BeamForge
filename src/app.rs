@@ -679,7 +679,7 @@ impl RayEtch {
             Cancel,
         }
         let mut choice = None;
-        let modal = egui::Modal::new(egui::Id::new("save_prompt")).show(ctx, |ui| {
+        let modal = egui::Modal::new(egui::Id::unique("save_prompt")).show(ctx, |ui| {
             ui.set_width(380.0);
             ui.heading(tr("Salvare il progetto?"));
             ui.add_space(6.0);
@@ -1014,8 +1014,8 @@ impl RayEtch {
     }
 
     pub fn preview_test(&mut self, doc: Document) {
-        let (job, gcode) = self.test_job(&doc);
-        self.preview = Some(Preview::new(job, gcode, Some(doc), &self.doc));
+        let (job, _) = self.test_job(&doc);
+        self.preview = Some(Preview::new(job, Some(doc), &self.doc));
     }
 
     pub fn frame_test(&mut self, doc: &Document) {
@@ -1937,7 +1937,7 @@ impl RayEtch {
         // RAYETCH_OPEN=material,cycle: the test generator opens each of its three inline editors in turn
         if std::env::var("RAYETCH_OPEN").is_ok_and(|v| v.contains("material") && v.contains("cycle")) && ss.frames % 20 == 0 && ss.frames < 100 {
             let e = (ss.frames / 20) as usize;
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new("mt_editing"), if e <= 3 { Some(e - 1) } else { None::<usize> }));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::unique("mt_editing"), if e <= 3 { Some(e - 1) } else { None::<usize> }));
         }
         if ss.frames == 118 && std::env::var_os("RAYETCH_DUMP_SIZES").is_some() {
             println!("{}", crate::theme::dump_sizes());
@@ -2223,8 +2223,8 @@ impl RayEtch {
     }
 
     pub fn open_preview(&mut self) {
-        let (job, gcode) = self.job_gcode();
-        self.preview = Some(Preview::new(job, gcode, None, &self.doc));
+        let (job, _) = self.job_gcode();
+        self.preview = Some(Preview::new(job, None, &self.doc));
     }
 }
 

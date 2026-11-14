@@ -53,7 +53,7 @@ pub fn set(l: Lang) {
     CURRENT.store(l as u8, Ordering::Relaxed);
 }
 
-/// The system's language when it is one BeamForge speaks, otherwise English.
+/// The system's language when it is one RayEtch speaks, otherwise English.
 pub fn system_lang() -> Lang {
     sys_locale::get_locales().find_map(|l| Lang::from_code(&l)).unwrap_or(Lang::En)
 }
@@ -118,8 +118,8 @@ pub fn save_cut_defaults(d: &std::collections::HashMap<usize, crate::model::CutS
 
 /// The system's app-data folder, like the original's settings folder (_GetSettingsFolder
 /// 0x1009444e4: QStandardPaths::writableLocation(AppDataLocation)):
-/// macOS ~/Library/Application Support/BeamForge, Windows %APPDATA%\BeamForge,
-/// Linux $XDG_DATA_HOME/BeamForge (default ~/.local/share/BeamForge).
+/// macOS ~/Library/Application Support/RayEtch, Windows %APPDATA%\RayEtch,
+/// Linux $XDG_DATA_HOME/RayEtch (default ~/.local/share/RayEtch).
 pub fn settings_folder() -> Option<std::path::PathBuf> {
     settings_path().and_then(|p| p.parent().map(|d| d.to_path_buf()))
 }
@@ -141,9 +141,38 @@ fn settings_path() -> Option<std::path::PathBuf> {
             h
         }))?
     };
-    p.push("BeamForge");
+    // the program was called BeamForge before: its settings folder is copied over once, so
+    // language, lasers, presets and window sizes carry on
+    let old = p.join(OLD_SETTINGS_DIR);
+    p.push("RayEtch");
+    migrate_settings(&old, &p);
     p.push("settings.json");
     Some(p)
+}
+
+/// The settings folder's name before the program was renamed RayEtch.
+const OLD_SETTINGS_DIR: &str = "BeamForge";
+
+/// Copy the old settings folder's files into the new one when the new one doesn't exist yet
+/// (once per run is checked; nothing is deleted).
+fn migrate_settings(old: &std::path::Path, new: &std::path::Path) {
+    static DONE: OnceLock<()> = OnceLock::new();
+    DONE.get_or_init(|| {
+        if new.exists() || !old.is_dir() {
+            return;
+        }
+        if std::fs::create_dir_all(new).is_err() {
+            return;
+        }
+        if let Ok(rd) = std::fs::read_dir(old) {
+            for e in rd.flatten() {
+                let from = e.path();
+                if from.is_file() {
+                    let _ = std::fs::copy(&from, new.join(e.file_name()));
+                }
+            }
+        }
+    });
 }
 
 /// Decimal separator taken from the system locale, as the original does when it loads a
@@ -255,7 +284,7 @@ static ROWS: &[(&str, [&str; 4])] = &[
     ("Provo {} a {} baud…", ["Trying {} at {} baud…", "Probando {} a {} baudios…", "Teste {} mit {} Baud…", "Essai de {} à {} bauds…"]),
     ("Nessun laser trovato.", ["No lasers found.", "No se encontró ningún láser.", "Kein Laser gefunden.", "Aucun laser trouvé."]),
     ("Trovati {} dispositivi.", ["Found {} devices.", "Se encontraron {} dispositivos.", "{} Geräte gefunden.", "{} périphériques trouvés."]),
-    ("Collega il laser con il cavo USB e accendilo. BeamForge prova ogni porta USB e ascolta la risposta del controller.", ["Connect the laser with its USB cable and switch it on. BeamForge tries every USB port and listens for the controller's answer.", "Conecta el láser con el cable USB y enciéndelo. BeamForge prueba cada puerto USB y escucha la respuesta del controlador.", "Laser per USB-Kabel verbinden und einschalten. BeamForge prüft jeden USB-Port und wartet auf die Antwort des Controllers.", "Branchez le laser avec son câble USB et allumez-le. BeamForge essaie chaque port USB et écoute la réponse du contrôleur."]),
+    ("Collega il laser con il cavo USB e accendilo. RayEtch prova ogni porta USB e ascolta la risposta del controller.", ["Connect the laser with its USB cable and switch it on. RayEtch tries every USB port and listens for the controller's answer.", "Conecta el láser con el cable USB y enciéndelo. RayEtch prueba cada puerto USB y escucha la respuesta del controlador.", "Laser per USB-Kabel verbinden und einschalten. RayEtch prüft jeden USB-Port und wartet auf die Antwort des Controllers.", "Branchez le laser avec son câble USB et allumez-le. RayEtch essaie chaque port USB et écoute la réponse du contrôleur."]),
     ("Nessun controller ha risposto. Controlla cavo, alimentazione e driver USB, poi riprova, oppure crea il dispositivo a mano.", ["No controller answered. Check the cable, power and USB driver and try again, or create the device manually.", "Ningún controlador respondió. Revisa cable, alimentación y driver USB y vuelve a intentarlo, o crea el dispositivo manualmente.", "Kein Controller hat geantwortet. Kabel, Strom und USB-Treiber prüfen und erneut versuchen oder das Gerät manuell anlegen.", "Aucun contrôleur n'a répondu. Vérifiez le câble, l'alimentation et le pilote USB puis réessayez, ou créez le périphérique manuellement."]),
     ("In attesa di risposte…", ["Waiting for answers…", "Esperando respuestas…", "Warte auf Antworten…", "En attente de réponses…"]),
     ("area sconosciuta", ["unknown area", "área desconocida", "Bereich unbekannt", "zone inconnue"]),
@@ -390,9 +419,9 @@ static ROWS: &[(&str, [&str; 4])] = &[
     ("Forma", ["Shape", "Forma", "Form", "Forme"]),
     ("Aiuto", ["Help", "Ayuda", "Hilfe", "Aide"]),
     ("Guida", ["Help", "Ayuda", "Hilfe", "Aide"]),
-    ("Informazioni su BeamForge", ["About BeamForge", "Acerca de BeamForge", "Über BeamForge", "À propos de BeamForge"]),
+    ("Informazioni su RayEtch", ["About RayEtch", "Acerca de RayEtch", "Über RayEtch", "À propos de RayEtch"]),
     ("Servizi", ["Services", "Servicios", "Dienste", "Services"]),
-    ("Nascondi BeamForge", ["Hide BeamForge", "Ocultar BeamForge", "BeamForge ausblenden", "Masquer BeamForge"]),
+    ("Nascondi RayEtch", ["Hide RayEtch", "Ocultar RayEtch", "RayEtch ausblenden", "Masquer RayEtch"]),
     ("Nascondi altre", ["Hide Others", "Ocultar otros", "Andere ausblenden", "Masquer les autres"]),
     ("Mostra tutte", ["Show All", "Mostrar todo", "Alle einblenden", "Tout afficher"]),
     ("Punto di riferimento: posizione, dimensioni e rotazione partono da qui", ["Reference point: position, size and rotation work from here", "Punto de referencia: posición, tamaño y rotación parten de aquí", "Bezugspunkt: Position, Größe und Drehung gehen von hier aus", "Point de référence : position, taille et rotation partent d'ici"]),
@@ -485,7 +514,7 @@ static ROWS: &[(&str, [&str; 4])] = &[
     ("Salvare il progetto?", ["Save Project?", "¿Guardar el proyecto?", "Projekt speichern?", "Enregistrer le projet ?"]),
     ("Il progetto è stato modificato.\n\nVuoi salvarlo prima di chiuderlo?", ["Your project has been modified.\n\nWould you like to save it before closing?", "El proyecto ha sido modificado.\n\n¿Quieres guardarlo antes de cerrarlo?", "Das Projekt wurde geändert.\n\nMöchtest du es vor dem Schließen speichern?", "Le projet a été modifié.\n\nVoulez-vous l'enregistrer avant de le fermer ?"]),
     ("Non salvare", ["Don't Save", "No guardar", "Nicht speichern", "Ne pas enregistrer"]),
-    ("Esci da BeamForge", ["Quit BeamForge", "Salir de BeamForge", "BeamForge beenden", "Quitter BeamForge"]),
+    ("Esci da RayEtch", ["Quit RayEtch", "Salir de RayEtch", "RayEtch beenden", "Quitter RayEtch"]),
     ("Annulla (⌘Z)", ["Undo (⌘Z)", "Deshacer (⌘Z)", "Rückgängig (⌘Z)", "Annuler (⌘Z)"]),
     ("Ripeti (⇧⌘Z)", ["Redo (⇧⌘Z)", "Rehacer (⇧⌘Z)", "Wiederholen (⇧⌘Z)", "Rétablir (⇧⌘Z)"]),
     ("Taglia (⌘X)", ["Cut (⌘X)", "Cortar (⌘X)", "Ausschneiden (⌘X)", "Couper (⌘X)"]),
@@ -519,7 +548,7 @@ static ROWS: &[(&str, [&str; 4])] = &[
     ("Lati del poligono", ["Polygon sides", "Lados del polígono", "Polygonseiten", "Côtés du polygone"]),
     // status and palette
     ("{} forme · {} selezionate", ["{} shapes · {} selected", "{} formas · {} seleccionadas", "{} Formen · {} ausgewählt", "{} formes · {} sélectionnées"]),
-    ("BeamForge 1.0 · software libero, licenza Apache 2.0", ["BeamForge 1.0 · free software, Apache 2.0 licence", "BeamForge 1.0 · software libre, licencia Apache 2.0", "BeamForge 1.0 · freie Software, Apache-2.0-Lizenz", "BeamForge 1.0 · logiciel libre, licence Apache 2.0"]),
+    ("RayEtch 1.0 · software libero, licenza Apache 2.0", ["RayEtch 1.0 · free software, Apache 2.0 licence", "RayEtch 1.0 · software libre, licencia Apache 2.0", "RayEtch 1.0 · freie Software, Apache-2.0-Lizenz", "RayEtch 1.0 · logiciel libre, licence Apache 2.0"]),
     ("Livello strumento (non viene inciso)", ["Tool layer (not burned)", "Capa de herramienta (no se graba)", "Werkzeugebene (wird nicht gelasert)", "Calque outil (non gravé)"]),
     ("Assegna il livello alle forme selezionate", ["Assign this layer to the selected shapes", "Asignar la capa a las formas seleccionadas", "Ebene den ausgewählten Formen zuweisen", "Attribuer le calque aux formes sélectionnées"]),
     // cuts / layers
@@ -720,10 +749,10 @@ static ROWS: &[(&str, [&str; 4])] = &[
     ("Scarica e installa", ["Download and install", "Descargar e instalar", "Herunterladen und installieren", "Télécharger et installer"]),
     ("Questa copia non può aggiornarsi da sola (cartella protetta o versione di sviluppo): scarica il pacchetto e sostituiscilo a mano.", ["This copy can't update itself (protected folder or development build): download the package and replace it by hand.", "Esta copia no puede actualizarse sola (carpeta protegida o versión de desarrollo): descarga el paquete y sustitúyelo a mano.", "Diese Kopie kann sich nicht selbst aktualisieren (geschützter Ordner oder Entwicklungsversion): Paket herunterladen und von Hand ersetzen.", "Cette copie ne peut pas se mettre à jour seule (dossier protégé ou version de développement) : téléchargez le paquet et remplacez-le à la main."]),
     ("Questa versione non ha ancora un pacchetto per il tuo sistema.", ["This version has no package for your system yet.", "Esta versión aún no tiene paquete para tu sistema.", "Für dein System gibt es noch kein Paket dieser Version.", "Cette version n'a pas encore de paquet pour votre système."]),
-    ("Download di BeamForge {}…", ["Downloading BeamForge {}…", "Descargando BeamForge {}…", "BeamForge {} wird heruntergeladen…", "Téléchargement de BeamForge {}…"]),
-    ("Installazione di BeamForge {}…", ["Installing BeamForge {}…", "Instalando BeamForge {}…", "BeamForge {} wird installiert…", "Installation de BeamForge {}…"]),
-    ("BeamForge {} è installato.", ["BeamForge {} is installed.", "BeamForge {} está instalado.", "BeamForge {} ist installiert.", "BeamForge {} est installé."]),
-    ("Riavvia per usare la nuova versione. Se ci sono modifiche non salvate, BeamForge te lo chiede prima.", ["Restart to use the new version. If there are unsaved changes, BeamForge asks first.", "Reinicia para usar la nueva versión. Si hay cambios sin guardar, BeamForge te lo pregunta antes.", "Starte neu, um die neue Version zu nutzen. Bei ungespeicherten Änderungen fragt BeamForge zuerst.", "Redémarrez pour utiliser la nouvelle version. S'il y a des modifications non enregistrées, BeamForge vous le demande d'abord."]),
+    ("Download di RayEtch {}…", ["Downloading RayEtch {}…", "Descargando RayEtch {}…", "RayEtch {} wird heruntergeladen…", "Téléchargement de RayEtch {}…"]),
+    ("Installazione di RayEtch {}…", ["Installing RayEtch {}…", "Instalando RayEtch {}…", "RayEtch {} wird installiert…", "Installation de RayEtch {}…"]),
+    ("RayEtch {} è installato.", ["RayEtch {} is installed.", "RayEtch {} está instalado.", "RayEtch {} ist installiert.", "RayEtch {} est installé."]),
+    ("Riavvia per usare la nuova versione. Se ci sono modifiche non salvate, RayEtch te lo chiede prima.", ["Restart to use the new version. If there are unsaved changes, RayEtch asks first.", "Reinicia para usar la nueva versión. Si hay cambios sin guardar, RayEtch te lo pregunta antes.", "Starte neu, um die neue Version zu nutzen. Bei ungespeicherten Änderungen fragt RayEtch zuerst.", "Redémarrez pour utiliser la nouvelle version. S'il y a des modifications non enregistrées, RayEtch vous le demande d'abord."]),
     ("Riavvia ora", ["Restart now", "Reiniciar ahora", "Jetzt neu starten", "Redémarrer maintenant"]),
     ("Più tardi", ["Later", "Más tarde", "Später", "Plus tard"]),
     ("L'aggiornamento non è riuscito: la versione installata non è stata toccata.", ["The update failed: the installed version was left as it was.", "La actualización falló: la versión instalada no se ha tocado.", "Die Aktualisierung ist fehlgeschlagen: Die installierte Version bleibt unverändert.", "La mise à jour a échoué : la version installée n'a pas été modifiée."]),
@@ -792,8 +821,8 @@ static ROWS: &[(&str, [&str; 4])] = &[
     ("Ripetuto", ["Redone", "Rehecho", "Wiederholt", "Rétabli"]),
     ("Scollegato", ["Disconnected", "Desconectado", "Getrennt", "Déconnecté"]),
     ("Collegato", ["Connected", "Conectado", "Verbunden", "Connecté"]),
-    ("BeamForge 1.0 — software laser libero, licenza open source Apache 2.0. Nessuna attivazione richiesta.", ["BeamForge 1.0 — free laser software, open-source Apache 2.0 licence. No activation required.", "BeamForge 1.0 — software láser libre, licencia de código abierto Apache 2.0. No requiere activación.", "BeamForge 1.0 — freie Lasersoftware, Open-Source-Lizenz Apache 2.0. Keine Aktivierung nötig.", "BeamForge 1.0 — logiciel laser libre, licence open source Apache 2.0. Aucune activation requise."]),
-    ("BeamForge project", ["BeamForge project", "Proyecto BeamForge", "BeamForge-Projekt", "Projet BeamForge"]),
+    ("RayEtch 1.0 — software laser libero, licenza open source Apache 2.0. Nessuna attivazione richiesta.", ["RayEtch 1.0 — free laser software, open-source Apache 2.0 licence. No activation required.", "RayEtch 1.0 — software láser libre, licencia de código abierto Apache 2.0. No requiere activación.", "RayEtch 1.0 — freie Lasersoftware, Open-Source-Lizenz Apache 2.0. Keine Aktivierung nötig.", "RayEtch 1.0 — logiciel laser libre, licence open source Apache 2.0. Aucune activation requise."]),
+    ("RayEtch project", ["RayEtch project", "Proyecto RayEtch", "RayEtch-Projekt", "Projet RayEtch"]),
     ("Supported files", ["Supported files", "Archivos compatibles", "Unterstützte Dateien", "Fichiers pris en charge"]),
     ("Images", ["Images", "Imágenes", "Bilder", "Images"]),
     ("Tutti supportati", ["All supported", "Todos los compatibles", "Alle unterstützten", "Tous pris en charge"]),

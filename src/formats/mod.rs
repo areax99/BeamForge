@@ -1,7 +1,7 @@
 //! Importing every file kind the original's Import dialog lists (TranslatorDescriptor registry
 //! sub_1000fe618): vector drawings, projects, plotter and machine files, 3D models and PCB files.
 //! Each reader turns its file into pieces (a layer and its outlines, mm, Y up); `shapes_from`
-//! makes BeamForge shapes of them. The rules each reader follows are in MECHANICS.md.
+//! makes RayEtch shapes of them. The rules each reader follows are in MECHANICS.md.
 
 pub mod mesh;
 pub mod pcb;
@@ -40,7 +40,7 @@ pub const PCB_EXTS: &[&str] = &[
     "gbrjob",
 ];
 
-/// Every extension BeamForge imports.
+/// Every extension RayEtch imports.
 pub fn all_exts() -> Vec<&'static str> {
     let mut v: Vec<&'static str> = Vec::new();
     for e in VECTOR_EXTS.iter().chain(MODEL_EXTS).chain(PCB_EXTS).chain(IMAGE_EXTS) {
@@ -66,7 +66,7 @@ pub fn import_file(path: &std::path::Path) -> Result<Imported, String> {
         "ai" | "pdf" => pdf::import(&bytes)?,
         "eps" | "epsf" | "ps" => pdf::eps(&bytes)?,
         // CorelDRAW's own format is a closed binary one (zip + RIFF since X4); like the original,
-        // which only offers a macro to run inside CorelDRAW, BeamForge asks for an exported file
+        // which only offers a macro to run inside CorelDRAW, RayEtch asks for an exported file
         "cdr" => return Err(tr("I file CorelDRAW (.cdr) non si possono leggere direttamente. In CorelDRAW usa File › Esporta e scegli SVG, PDF, DXF o EPS, poi importa quel file.").into()),
         "lbrn" | "lbrn2" | "mage" | "lbt" => return project::lightburn(&bytes).map(Imported::Placed),
         "sc" | "scpro2" => project::signcut(&bytes)?,
@@ -230,12 +230,12 @@ mod tests {
         }
     }
 
-    /// Imports every file listed (one path per line) in BEAMFORGE_IMPORT_LIST and reports each.
-    /// `BEAMFORGE_IMPORT_LIST=list.txt cargo test import_samples -- --ignored --nocapture`
+    /// Imports every file listed (one path per line) in RAYETCH_IMPORT_LIST and reports each.
+    /// `RAYETCH_IMPORT_LIST=list.txt cargo test import_samples -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn import_samples() {
-        let Ok(list) = std::env::var("BEAMFORGE_IMPORT_LIST") else { return };
+        let Ok(list) = std::env::var("RAYETCH_IMPORT_LIST") else { return };
         for path in std::fs::read_to_string(list).unwrap().lines().filter(|l| !l.is_empty()) {
             let t = std::time::Instant::now();
             let r = import_file(std::path::Path::new(path));

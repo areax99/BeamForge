@@ -1,6 +1,6 @@
 //! Measures the running code against app/mechanics.json: each test reads a value from the sheet
 //! and compares it with what the program actually computes or uses (`cargo test mechanics`).
-//! This checks BeamForge against its own sheet; it can't compare with the original running.
+//! This checks RayEtch against its own sheet; it can't compare with the original running.
 
 use crate::model::{Geometry, Shape};
 

@@ -1,6 +1,6 @@
 //! The design canvas: workspace grid, rulers, shapes, selection and drawing tools.
 
-use crate::app::{BeamForge, Drag, Tool};
+use crate::app::{RayEtch, Drag, Tool};
 use crate::model::*;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
 
@@ -55,7 +55,7 @@ fn minor_grid_color(major_px: f32) -> Option<Color32> {
 
 /// "Contrasto griglia" (Impostazioni > Unità e Griglie): Basso keeps the theme's grid colours,
 /// Medio and Alto move them a quarter and a half of the way from the page towards the ink.
-fn grid_contrast(app: &BeamForge, c: Color32) -> Color32 {
+fn grid_contrast(app: &RayEtch, c: Color32) -> Color32 {
     use crate::prefs::GridContrast;
     let k = match app.prefs.grid_contrast {
         GridContrast::Low => return c,
@@ -88,7 +88,7 @@ pub const ZOOM_MAX: f32 = 5000.0;
 pub const ZOOM_FIT_MARGIN: f32 = 0.96;
 
 /// Toolbar/menu zoom: scales about the view centre (EditWindow::ZoomRelative(float)).
-pub fn zoom_relative(app: &mut BeamForge, factor: f32) {
+pub fn zoom_relative(app: &mut RayEtch, factor: f32) {
     let c = app.view.last_area / 2.0;
     let wx = (c.x - app.view.offset.x) / app.view.zoom;
     let wy = (app.view.offset.y - c.y) / app.view.zoom;
@@ -98,7 +98,7 @@ pub fn zoom_relative(app: &mut BeamForge, factor: f32) {
     app.view.offset = vec2(c.x - wx * nz, c.y + wy * nz);
 }
 
-pub fn fit_view(app: &mut BeamForge, area: Rect) {
+pub fn fit_view(app: &mut RayEtch, area: Rect) {
     let w = (app.doc.device.width as f32).max(1.0);
     let h = (app.doc.device.height as f32).max(1.0);
     let zoom = ((area.width() / w).min(area.height() / h) * ZOOM_FIT_MARGIN).clamp(ZOOM_MIN, ZOOM_MAX);
@@ -108,7 +108,7 @@ pub fn fit_view(app: &mut BeamForge, area: Rect) {
     app.view.offset = vec2(ox, oy);
 }
 
-pub fn zoom_to(app: &mut BeamForge, area: Rect, b: BBox) {
+pub fn zoom_to(app: &mut RayEtch, area: Rect, b: BBox) {
     if !b.is_valid() {
         return;
     }
@@ -124,7 +124,7 @@ pub fn zoom_to(app: &mut BeamForge, area: Rect, b: BBox) {
 /// (SelectionTool::Draw 0x100779234, handle type 4: ±8.0 on both axes).
 pub(crate) const ROTATE_HANDLE_OFFSET_PX: f32 = 8.0;
 /// How close (screen pixels) the pointer must be to a rotate handle to grab it. The original uses
-/// 8 px (SelectionTool::Update, nearest handle / gViewScale < 8.0); BeamForge allows 14 so the arrow
+/// 8 px (SelectionTool::Update, nearest handle / gViewScale < 8.0); RayEtch allows 14 so the arrow
 /// is easy to catch, as the person had trouble grabbing it (estimated).
 pub(crate) const ROTATE_GRAB_PX: f32 = 14.0;
 
@@ -174,7 +174,7 @@ fn handle_points(b: &BBox) -> [P2; 8] {
 }
 
 /// Top-most shape under a point: outlines first, then the smallest closed shape containing it.
-pub fn hit_test(app: &BeamForge, p: P2, tol: f64) -> Option<u64> {
+pub fn hit_test(app: &RayEtch, p: P2, tol: f64) -> Option<u64> {
     for s in app.doc.shapes.iter().rev() {
         if !app.doc.layers[s.layer].show {
             continue;
@@ -221,7 +221,7 @@ pub fn hit_test(app: &BeamForge, p: P2, tol: f64) -> Option<u64> {
 
 /// Where the next line point goes: with Shift held, the pointer is kept on the nearest of
 /// horizontal, vertical or 45° from the last point (LineTool::AxisSnap 0x100766010).
-fn line_cursor(app: &BeamForge, cursor: Option<P2>, shift: bool) -> Option<P2> {
+fn line_cursor(app: &RayEtch, cursor: Option<P2>, shift: bool) -> Option<P2> {
     let c = cursor?;
     match app.line_pts.last() {
         Some(last) if shift => Some(line_axis_snap(*last, c)),
@@ -244,7 +244,7 @@ pub(crate) fn line_axis_snap(a: P2, b: P2) -> P2 {
     }
 }
 
-pub fn finish_line(app: &mut BeamForge, closed: bool) {
+pub fn finish_line(app: &mut RayEtch, closed: bool) {
     let pts = std::mem::take(&mut app.line_pts);
     if pts.len() < 2 {
         return;
@@ -328,7 +328,7 @@ fn fill_paths(painter: &egui::Painter, xf: &Xf, paths: &[Polyline], fill: Color3
 
 /// Side of the selection's square handles in screen pixels, from "Cursori/Nodi"
 /// (Impostazioni > Schermo: Normale … Enorme).
-fn handle_px(app: &BeamForge) -> f32 {
+fn handle_px(app: &RayEtch) -> f32 {
     const SIZES: [f32; 5] = [7.0, 9.0, 11.0, 13.0, 16.0];
     SIZES[(app.prefs.handle_size as usize).min(4)]
 }
@@ -339,7 +339,7 @@ const SNAP_MAX_POINTS: usize = 50_000;
 /// A drawing point after Impostazioni > Unità e Griglie: to a corner or point of a shape within
 /// "Distanza snap ad oggetto" screen pixels (Aggancia agli oggetti), else to the nearest
 /// "Distanza griglia magnetica" step (Aggancia alla griglia).
-fn snap_point(app: &BeamForge, p: P2) -> P2 {
+fn snap_point(app: &RayEtch, p: P2) -> P2 {
     let pr = &app.prefs;
     if pr.snap_to_objects {
         let reach = pr.snap_object_distance_px.max(0.5) / app.view.zoom as f64;
@@ -387,7 +387,7 @@ pub fn drag_box(start: P2, cur: P2, square: bool, centred: bool) -> (P2, P2) {
     }
 }
 
-fn create_shape(app: &mut BeamForge, a: P2, b: P2, square: bool, centred: bool) {
+fn create_shape(app: &mut RayEtch, a: P2, b: P2, square: bool, centred: bool) {
     let (a, b) = drag_box(a, b, square, centred);
     let w = b[0] - a[0];
     let h = b[1] - a[1];
@@ -477,7 +477,7 @@ fn picture_key(s: &Shape) -> u64 {
     h.finish()
 }
 
-fn draw_image(app: &mut BeamForge, ctx: &egui::Context, painter: &egui::Painter, xf: &Xf, index: usize, alpha: u8) {
+fn draw_image(app: &mut RayEtch, ctx: &egui::Context, painter: &egui::Painter, xf: &Xf, index: usize, alpha: u8) {
     let s = &app.doc.shapes[index];
     let Geometry::Image { w, h, px_w, px_h, gray } = &s.geom else { return };
     let key = picture_key(s);
@@ -501,7 +501,7 @@ fn draw_image(app: &mut BeamForge, ctx: &egui::Context, painter: &egui::Painter,
     painter.add(egui::Shape::mesh(mesh));
 }
 
-pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
+pub fn canvas(app: &mut RayEtch, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let (full, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
     let area = Rect::from_min_max(full.min + vec2(RULER, RULER), full.max);
@@ -805,7 +805,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
             // click on an outline adds a tab, Ctrl/Cmd-click or double-click on a tab removes it,
             // dragging a tab slides it along the outline. Tab hit radius 5 px, outline search 25 px
             // (FindTabPoint 0x10075866c passes 25.0 to GetPrimPointAt).
-            let find_tab = |app: &BeamForge, p: P2| -> Option<(usize, usize)> {
+            let find_tab = |app: &RayEtch, p: P2| -> Option<(usize, usize)> {
                 for (si, s) in app.doc.shapes.iter().enumerate() {
                     for (ti, q) in s.tab_points().iter().enumerate() {
                         if (q[0] - p[0]).hypot(q[1] - p[1]) <= tol {
@@ -815,7 +815,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
                 }
                 None
             };
-            let nearest = |app: &BeamForge, p: P2| -> Option<(usize, usize, f64)> {
+            let nearest = |app: &RayEtch, p: P2| -> Option<(usize, usize, f64)> {
                 let mut best: Option<(usize, usize, f64, f64)> = None;
                 for (si, s) in app.doc.shapes.iter().enumerate() {
                     if let Some((pi, t, d)) = s.nearest_on_outline(p) {

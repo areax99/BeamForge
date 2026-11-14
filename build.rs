@@ -1,4 +1,4 @@
-//! On Windows, put the icon (assets/icon.ico) and the program details inside beamforge.exe.
+//! On Windows, put the icon (assets/icon.ico) and the program details inside rayetch.exe.
 //! Other systems get their icon from the app bundle (macOS) or the .desktop file (Linux).
 
 /// Build time in UTC as "yyyy-MM-dd @ hh:mm:ss", the format of the original's About page
@@ -22,16 +22,16 @@ fn build_utc() -> String {
 fn main() {
     // rebuild the date whenever the code changes
     println!("cargo:rerun-if-changed=src");
-    println!("cargo:rustc-env=BEAMFORGE_BUILD_UTC={}", build_utc());
+    println!("cargo:rustc-env=RAYETCH_BUILD_UTC={}", build_utc());
     println!("cargo:rerun-if-changed=assets/icon.ico");
     println!("cargo:rerun-if-changed=assets/document.ico");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let mut res = winresource::WindowsResource::new();
-        // icon resource 1: the program; 2: saved .beamforge projects (see src/fileicon.rs)
+        // icon resource 1: the program; 2: saved .rayetch projects (see src/fileicon.rs)
         res.set_icon_with_id("assets/icon.ico", "1");
         res.set_icon_with_id("assets/document.ico", "2");
-        res.set("ProductName", "BeamForge");
-        res.set("FileDescription", "BeamForge - free laser software");
+        res.set("ProductName", "RayEtch");
+        res.set("FileDescription", "RayEtch - free laser software");
         if let Err(e) = res.compile() {
             println!("cargo:warning=could not embed the Windows icon: {e}");
         }

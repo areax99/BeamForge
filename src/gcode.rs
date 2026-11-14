@@ -1349,7 +1349,7 @@ pub fn write_gcode(doc: &Document, job: &Job, opts: &JobOptions) -> String {
     let d = &doc.device;
     let mut out = String::new();
     let relative = opts.start_from == StartFrom::CurrentPosition;
-    out.push_str("; BeamForge 1.0.0 - free laser software\n");
+    out.push_str("; RayEtch 1.0.0 - free laser software\n");
     out.push_str(&format!("; {} device profile, {}\n", d.name, match opts.start_from {
         StartFrom::AbsoluteCoords => "absolute coords",
         StartFrom::UserOrigin => "user origin",

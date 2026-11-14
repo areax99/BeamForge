@@ -895,12 +895,12 @@ mod tests {
 
 #[cfg(test)]
 mod ai_sample {
-    /// Imports the one file named by BEAMFORGE_AI_FILE and prints how long it took and what came out.
-    /// `BEAMFORGE_AI_FILE=x.ai cargo test ai_sample -- --ignored --nocapture`
+    /// Imports the one file named by RAYETCH_AI_FILE and prints how long it took and what came out.
+    /// `RAYETCH_AI_FILE=x.ai cargo test ai_sample -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn ai_sample() {
-        let Ok(path) = std::env::var("BEAMFORGE_AI_FILE") else { return };
+        let Ok(path) = std::env::var("RAYETCH_AI_FILE") else { return };
         let bytes = std::fs::read(&path).unwrap();
         let t = std::time::Instant::now();
         let r = super::import(&bytes);
@@ -914,11 +914,11 @@ mod ai_sample {
 
 #[cfg(test)]
 mod eps_sample {
-    /// `BEAMFORGE_EPS_FILE=x.eps cargo test eps_sample -- --ignored --nocapture`
+    /// `RAYETCH_EPS_FILE=x.eps cargo test eps_sample -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn eps_sample() {
-        let Ok(path) = std::env::var("BEAMFORGE_EPS_FILE") else { return };
+        let Ok(path) = std::env::var("RAYETCH_EPS_FILE") else { return };
         let bytes = std::fs::read(&path).unwrap();
         match super::eps(&bytes) {
             Ok(p) => println!("RESULT OK {} pieces, {} paths", p.len(), p.iter().map(|x| x.paths.len()).sum::<usize>()),

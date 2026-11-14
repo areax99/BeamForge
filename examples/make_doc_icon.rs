@@ -1,5 +1,5 @@
-//! Draws the icon of saved BeamForge projects (.beamforge files): a light page with a folded
-//! corner, BeamForge's orange diamond and laser beam, and an orange band at the bottom.
+//! Draws the icon of saved RayEtch projects (.rayetch files): a light page with a folded
+//! corner, RayEtch's orange diamond and laser beam, and an orange band at the bottom.
 //! Writes assets/document.png (1024×1024, for macOS and Linux) and assets/document.ico
 //! (16…256 px, for Windows).
 //!

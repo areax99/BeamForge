@@ -1,4 +1,4 @@
-//! BeamForge theme: a graphite "professional tool" look with one warm laser accent.
+//! RayEtch theme: a graphite "professional tool" look with one warm laser accent.
 //! Flat surfaces, hairline borders, small radii; the icons are drawn elsewhere and untouched.
 
 use eframe::egui::{self, Color32, CornerRadius, Stroke};
@@ -52,7 +52,7 @@ pub struct Palette {
     pub light: bool,
 }
 
-/// The dark theme, BeamForge's default. Row colours: the original's Classic Dark theme
+/// The dark theme, RayEtch's default. Row colours: the original's Classic Dark theme
 /// (Palette.Highlight Inactive #004275, HighlightedText white), a zlib Qt resource
 /// :/res/themes/classic_dark.json loaded by Core_Theme(ColorScheme) 0x1007295dc.
 pub static DARK: Palette = Palette {
@@ -91,7 +91,7 @@ pub static DARK: Palette = Palette {
 /// zlib Qt resource at file offset 0x1cfb3e0): Window/Button #F0F0F0, Base #FFFFFF, Text #000000,
 /// disabled text #787878, Mid #A0A0A0, Midlight #E3E3E3, AlternateBase #E9E7E3, Highlight Inactive
 /// #73B5E7 with HighlightedText Inactive #000000, WorkspaceBackground #BDC3C7, GridMinor #8095A5A6,
-/// GridMajor #807F8C8D. The bed fill (Base), the header bar and the hover stroke are BeamForge's.
+/// GridMajor #807F8C8D. The bed fill (Base), the header bar and the hover stroke are RayEtch's.
 pub static LIGHT: Palette = Palette {
     bg: Color32::from_rgb(0xF0, 0xF0, 0xF0),
     panel: Color32::from_rgb(0xF0, 0xF0, 0xF0),
@@ -137,7 +137,7 @@ pub fn p() -> &'static Palette {
 /// The saved theme choice, like the original: one line in `<settings folder>/themes/theme.ini`
 /// (LB_GetThemeFolder 0x100946680 appends "/themes" and creates it, LB_GetThemePrefFilePath 0x100946864
 /// appends "/theme.ini", LB_GetCurrentThemeFilePath 0x100946900 reads the first line and deletes the file
-/// when it names nothing valid). BeamForge writes `classic_dark` or `classic_light`; no file = dark.
+/// when it names nothing valid). RayEtch writes `classic_dark` or `classic_light`; no file = dark.
 fn theme_ini() -> Option<std::path::PathBuf> {
     crate::i18n::settings_folder().map(|d| d.join("themes").join("theme.ini"))
 }
@@ -277,8 +277,8 @@ pub fn centered<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui
     let w = w.pivot(egui::Align2::LEFT_TOP);
     let (w, size) = steady_size(ctx, key, w);
     let area = ctx.content_rect();
-    // BEAMFORGE_TRACE_WIN=1 (for testing): print where each dialog sits on every frame
-    if std::env::var_os("BEAMFORGE_TRACE_WIN").is_some()
+    // RAYETCH_TRACE_WIN=1 (for testing): print where each dialog sits on every frame
+    if std::env::var_os("RAYETCH_TRACE_WIN").is_some()
         && let Some(st) = egui::AreaState::load(ctx, egui::Id::new(("bf_win", key)))
     {
         println!("win {key} pass {pass} rect {:?} size {size:?} frame {frame} opened {opened}", st.rect());
@@ -310,8 +310,8 @@ pub fn centered<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui
 const CENTRE_PASSES: u64 = 3;
 
 /// Each dialog opens at its largest size, so nothing grows when options are switched (the person's
-/// request). Measured on macOS with the system font by running BeamForge through every state of
-/// each window (`BEAMFORGE_OPEN=<window>,cycle BEAMFORGE_DUMP_SIZES=1 beamforge --screenshot …`,
+/// request). Measured on macOS with the system font by running RayEtch through every state of
+/// each window (`RAYETCH_OPEN=<window>,cycle RAYETCH_DUMP_SIZES=1 rayetch --screenshot …`,
 /// MECHANICS.md round 69), outer size in points, rounded up. A larger size seen later (another
 /// language, font or system) is still remembered on top of these.
 const LARGEST_SIZES: &[(&str, [f32; 2])] = &[
@@ -381,14 +381,14 @@ fn steady_sizes() -> &'static std::sync::Mutex<std::collections::HashMap<String,
     static SIZES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, [f32; 2]>>> = std::sync::OnceLock::new();
     SIZES.get_or_init(|| {
         let saved: Option<std::collections::HashMap<String, [f32; 2]>> =
-            if STEADY_NO_SAVE.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("BEAMFORGE_DUMP_SIZES").is_some() {
+            if STEADY_NO_SAVE.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("RAYETCH_DUMP_SIZES").is_some() {
                 None
             } else {
                 crate::i18n::load_json("window_sizes.json")
             };
         let mut sizes = saved.unwrap_or_default();
         // measuring runs start from nothing, so they see each window's own size
-        if std::env::var_os("BEAMFORGE_DUMP_SIZES").is_none() {
+        if std::env::var_os("RAYETCH_DUMP_SIZES").is_none() {
             for (k, s) in LARGEST_SIZES {
                 let e = sizes.entry(k.to_string()).or_insert(*s);
                 *e = [e[0].max(s[0]), e[1].max(s[1])];

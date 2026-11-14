@@ -4,7 +4,7 @@
 //! Rules: MeasureTool::Update 0x10076a788, MeasureToolDialog::UpdateDisplay 0x10089ebc0,
 //! AsUnits 0x1008a1934, on_pbUnits_clicked 0x1008a1988 (see MECHANICS.md).
 
-use crate::app::BeamForge;
+use crate::app::RayEtch;
 use crate::i18n::{tr, trf};
 use crate::model::*;
 use eframe::egui::{self, Color32, vec2};
@@ -156,7 +156,7 @@ pub fn shape_info(s: &Shape) -> ShapeInfo {
 }
 
 /// Nearest piece of any visible shape within `tol` (mm).
-pub fn hit_prim(app: &BeamForge, p: P2, tol: f64) -> Option<(u64, usize)> {
+pub fn hit_prim(app: &RayEtch, p: P2, tol: f64) -> Option<(u64, usize)> {
     let mut best: Option<(u64, usize, f64)> = None;
     for s in app.doc.shapes.iter().rev() {
         if !app.doc.layers[s.layer].show {
@@ -201,7 +201,7 @@ fn fmt(v: f64, decimals: usize) -> String {
     if sep == '.' { s } else { s.replace('.', &sep.to_string()) }
 }
 
-pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn window(app: &mut RayEtch, ctx: &egui::Context) {
     if !app.measure.open {
         return;
     }
@@ -288,7 +288,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
 }
 
 /// Draw the measured shape (dashed green) with its hovered piece in magenta, or the dragged line.
-pub fn draw(app: &BeamForge, painter: &egui::Painter, xf: &crate::canvas::Xf) {
+pub fn draw(app: &RayEtch, painter: &egui::Painter, xf: &crate::canvas::Xf) {
     let st = &app.measure;
     // pens from MeasureTool::Draw 0x10076ac64: shape green (0,255,0) alpha 0x60, width 3;
     // hovered piece and dragged line magenta (255,0,255) alpha 0xC0, widths 3 and 2

@@ -875,12 +875,12 @@ mod tests {
 
 #[cfg(test)]
 mod dxf_samples {
-    /// Reads every file listed (one path per line) in BEAMFORGE_DXF_LIST and reports what each gives.
-    /// `BEAMFORGE_DXF_LIST=list.txt cargo test dxf_samples -- --ignored --nocapture`
+    /// Reads every file listed (one path per line) in RAYETCH_DXF_LIST and reports what each gives.
+    /// `RAYETCH_DXF_LIST=list.txt cargo test dxf_samples -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn dxf_samples() {
-        let Ok(list) = std::env::var("BEAMFORGE_DXF_LIST") else { return };
+        let Ok(list) = std::env::var("RAYETCH_DXF_LIST") else { return };
         for path in std::fs::read_to_string(list).unwrap().lines().filter(|l| !l.is_empty()) {
             let bytes = match std::fs::read(path) {
                 Ok(b) => b,

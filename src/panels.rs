@@ -1,7 +1,7 @@
 //! Menus, toolbars, docks and dialogs (Italian labels, like the original's Italian UI).
 
 use crate::i18n::{tr, trf};
-use crate::app::{BeamForge, RightTab, Tool};
+use crate::app::{RayEtch, RightTab, Tool};
 use crate::canvas::layer_color;
 use crate::gcode::StartFrom;
 use crate::model::*;
@@ -196,7 +196,7 @@ pub fn laser_menu_rows() -> Vec<MenuRow> {
 
 /// Draw a top-toolbar or left-tool button greyed out and unclickable when its action can't run now
 /// (same rule as the menus: MainWindow::UpdateActionsStatus 0x100c39980 disables the shared QAction).
-fn gated(app: &BeamForge, ui: &mut egui::Ui, id: &str, f: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
+fn gated(app: &RayEtch, ui: &mut egui::Ui, id: &str, f: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
     let on = app.can(id);
     ui.add_enabled_ui(on, |ui| {
         if !on {
@@ -209,15 +209,15 @@ fn gated(app: &BeamForge, ui: &mut egui::Ui, id: &str, f: impl FnOnce(&mut egui:
 }
 
 /// Laser-panel buttons stay clickable (the person's choice): the action itself says what's missing.
-fn always(_app: &BeamForge, ui: &mut egui::Ui, _id: &str, f: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
+fn always(_app: &RayEtch, ui: &mut egui::Ui, _id: &str, f: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
     f(ui)
 }
 
-/// How visible an unavailable button stays (BeamForge's choice; the original greys its Qt icons).
+/// How visible an unavailable button stays (RayEtch's choice; the original greys its Qt icons).
 const DISABLED_OPACITY: f32 = 0.3;
 
 /// Draw menu rows inside the window's menu; a click runs the same action as the menu bar.
-fn menu_rows(app: &mut BeamForge, ui: &mut egui::Ui, rows: Vec<MenuRow>) {
+fn menu_rows(app: &mut RayEtch, ui: &mut egui::Ui, rows: Vec<MenuRow>) {
     for row in rows {
         match row {
             None => {
@@ -265,17 +265,17 @@ fn top_frame() -> egui::Frame {
 
 // ---------------------------------------------------------------- menu
 
-pub fn menu_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
+pub fn menu_bar(app: &mut RayEtch, ui: &mut egui::Ui) {
     egui::Panel::top("menu").frame(theme::bar_frame(crate::theme::p().field).inner_margin(egui::Margin::symmetric(8, 3))).show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
             // The app menu on Linux and Windows: what the running original shows in its app menu
             // (About, Quit; Settings is under Modifica: MECHANICS.md round 65).
-            ui.menu_button(egui::RichText::new("BeamForge").color(ACCENT).strong().size(14.0), |ui| {
+            ui.menu_button(egui::RichText::new("RayEtch").color(ACCENT).strong().size(14.0), |ui| {
                 let ctx = ui.ctx().clone();
                 for row in [
-                    Some(("about", tr("Informazioni su BeamForge"))),
+                    Some(("about", tr("Informazioni su RayEtch"))),
                     None,
-                    Some(("quit", tr("Esci da BeamForge"))),
+                    Some(("quit", tr("Esci da RayEtch"))),
                 ] {
                     match row {
                         None => {
@@ -467,7 +467,7 @@ pub fn menu_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
                     let ctx = ui.ctx().clone();
                     crate::sysmenu::run(app, &ctx, "updates");
                 }
-                if ui.button(tr("Informazioni su BeamForge")).clicked() {
+                if ui.button(tr("Informazioni su RayEtch")).clicked() {
                     app.show_about = true;
                 }
             });
@@ -494,7 +494,7 @@ pub fn window_drag_area(ui: &mut egui::Ui) {
     }
 }
 
-/// Close, maximise and minimise, drawn by BeamForge (laid out right to left).
+/// Close, maximise and minimise, drawn by RayEtch (laid out right to left).
 fn window_buttons(ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     let ink = crate::theme::p().ink;
@@ -736,7 +736,7 @@ fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
 /// Room left for the macOS close/minimise/zoom buttons at the toolbar's left end (estimated).
 pub(crate) const MAC_WINDOW_BUTTONS_WIDTH: f32 = 70.0;
 
-pub fn main_toolbar(app: &mut BeamForge, ui: &mut egui::Ui) {
+pub fn main_toolbar(app: &mut RayEtch, ui: &mut egui::Ui) {
     egui::Panel::top("main_toolbar").frame(top_frame()).show(ui, |ui| {
         ui.horizontal(|ui| {
             // macOS: the three window buttons sit over this bar's left end (no title bar)
@@ -891,7 +891,7 @@ fn nb_field(ui: &mut egui::Ui, w: f32, dv: egui::DragValue<'_>) -> egui::Respons
     ui.add_sized(vec2(w, NB_ROW), dv)
 }
 
-pub fn numeric_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
+pub fn numeric_bar(app: &mut RayEtch, ui: &mut egui::Ui) {
     let frame_nr = ui.ctx().cumulative_frame_nr();
     let bar_h = NB_ROW * 2.0 + NB_GAP;
     egui::Panel::top("numeric").frame(top_frame().fill(crate::theme::p().panel).inner_margin(egui::Margin::symmetric(10, 6))).show(ui, |ui| {
@@ -1066,7 +1066,7 @@ pub fn numeric_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
 
 // ---------------------------------------------------------------- status & palette
 
-pub fn status_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
+pub fn status_bar(app: &mut RayEtch, ui: &mut egui::Ui) {
     egui::Panel::bottom("status").frame(theme::bar_frame(crate::theme::p().field).inner_margin(egui::Margin::symmetric(10, 3))).show(ui, |ui| {
         ui.horizontal(|ui| {
             let pos = app.cursor_world.map(|p| format!("x: {:.2}  y: {:.2} mm", p[0], p[1])).unwrap_or_else(|| "x: –  y: – mm".into());
@@ -1088,13 +1088,13 @@ pub fn status_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
             ui.separator();
             ui.label(&app.status);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(tr("BeamForge 1.0 · software libero, licenza Apache 2.0")).color(crate::theme::p().text_dim));
+                ui.label(egui::RichText::new(tr("RayEtch 1.0 · software libero, licenza Apache 2.0")).color(crate::theme::p().text_dim));
             });
         });
     });
 }
 
-pub fn palette_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
+pub fn palette_bar(app: &mut RayEtch, ui: &mut egui::Ui) {
     egui::Panel::bottom("palette").frame(theme::bar_frame(crate::theme::p().bg).inner_margin(egui::Margin::symmetric(8, 5))).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
@@ -1149,7 +1149,7 @@ fn tool_button(ui: &mut egui::Ui, t: Tool, active: bool) -> egui::Response {
 /// DoMenuPopup 0x1008a255c).
 const MENU_HOLD_SECS: f64 = 0.250;
 
-/// BeamForge's rule for a button with a menu, simpler than the original's at the person's request
+/// RayEtch's rule for a button with a menu, simpler than the original's at the person's request
 /// (the original opens it only on a 250 ms hold or a click in its corner, MultiActionButton
 /// button_clicked 0x1008a293c): any click opens or closes the menu at once, and a press held
 /// MENU_HOLD_SECS opens it while still held. Returns true when a click (not a hold) happened.
@@ -1193,7 +1193,7 @@ fn menu_position(ctx: &egui::Context, button: Rect, size: egui::Vec2) -> Pos2 {
     pos2(x, y)
 }
 
-fn shapes_button(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn shapes_button(app: &mut RayEtch, ui: &mut egui::Ui) {
     let shape_active = crate::app::SHAPE_TOOLS.contains(&app.tool);
     let resp = tool_button(ui, app.shape_tool, shape_active);
     let r = resp.rect;
@@ -1251,7 +1251,7 @@ fn shapes_button(app: &mut BeamForge, ui: &mut egui::Ui) {
 
 /// The combine-objects button: a click opens its menu (Unisci, Sottrai, Interseca, Assistente),
 /// like the original's MultiActionButton for these actions.
-fn combine_button(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn combine_button(app: &mut RayEtch, ui: &mut egui::Ui) {
     let on = app.can("combine");
     if !on {
         app.combine_menu_open = false;
@@ -1264,7 +1264,7 @@ fn combine_button(app: &mut BeamForge, ui: &mut egui::Ui) {
     });
 }
 
-fn combine_button_inner(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn combine_button_inner(app: &mut RayEtch, ui: &mut egui::Ui) {
     use crate::combine::{CombineOp, paint_icon};
     let (rect, resp) = ui.allocate_exact_size(vec2(36.0, 34.0), Sense::click());
     let p = ui.painter();
@@ -1553,7 +1553,7 @@ fn arrange_icon(ui: &mut egui::Ui, kind: ArrangeIcon, tip: &str) -> bool {
     resp.on_hover_text(tip).clicked()
 }
 
-fn arrange_toolbar(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn arrange_toolbar(app: &mut RayEtch, ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing.x = 2.0;
     if gated(app, ui, "group", |ui| arrange_icon(ui, ArrangeIcon::Group, tr("Raggruppa (⌘G)"))) {
         app.group();
@@ -1626,7 +1626,7 @@ fn mirror_icon(ui: &mut egui::Ui, vertical: bool, size: egui::Vec2, tip: &str) -
     resp.on_hover_text(tip).clicked()
 }
 
-pub fn tool_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
+pub fn tool_bar(app: &mut RayEtch, ui: &mut egui::Ui) {
     egui::Panel::left("tools").resizable(false).exact_size(54.0).frame(theme::bar_frame(crate::theme::p().bg).inner_margin(egui::Margin::symmetric(8, 8))).show(ui, |ui| {
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 4.0;
@@ -1701,7 +1701,7 @@ pub const RIGHT_WIDTH_DEFAULT: f32 = 512.0;
 pub const RIGHT_WIDTH_MIN: f32 = 380.0;
 pub const RIGHT_WIDTH_MAX: f32 = 1100.0;
 
-pub fn right_panel(app: &mut BeamForge, ui: &mut egui::Ui) {
+pub fn right_panel(app: &mut RayEtch, ui: &mut egui::Ui) {
     let max_w = RIGHT_WIDTH_MAX.min((ui.available_width() - 260.0).max(RIGHT_WIDTH_MIN));
     let panel = egui::Panel::right("docks").resizable(true);
     // Reset to Default Layout (ResetWindowLayout 0x100c43d24 → ResetRightDockLayout 0x100c3f600
@@ -1754,7 +1754,7 @@ pub fn right_panel(app: &mut BeamForge, ui: &mut egui::Ui) {
     }
 }
 
-fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn cuts_dock(app: &mut RayEtch, ui: &mut egui::Ui) {
     theme::dock_header(ui, tr("Tagli / Livelli"));
     let frame_nr = ui.ctx().cumulative_frame_nr();
     egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
@@ -1939,7 +1939,7 @@ fn quick_edit_disabled(ui: &mut egui::Ui) {
     });
 }
 
-fn move_layer(app: &mut BeamForge, dir: i32) {
+fn move_layer(app: &mut RayEtch, dir: i32) {
     let Some(l) = app.selected_row else { return };
     let mut order = app.doc.used_layers();
     let Some(i) = order.iter().position(|x| *x == l) else { return };
@@ -1970,7 +1970,7 @@ fn big_button(ui: &mut egui::Ui, text: &str, fill: Option<Color32>, w: f32) -> b
     ui.add_sized(vec2(w, 30.0), b).on_hover_text(text).clicked()
 }
 
-fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn laser_tab(app: &mut RayEtch, ui: &mut egui::Ui) {
     let w = (ui.available_width() - 16.0) / 3.0;
     ui.horizontal(|ui| {
         if always(app, ui, "start", |ui| big_button(ui, tr("Avvia"), Some(Color32::from_rgb(170, 70, 20)), w)) {
@@ -2097,7 +2097,7 @@ fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
     ui.label(egui::RichText::new(trf("Dispositivo: {} ({} × {} mm) — stato: {}", &[&app.doc.device.name, &format!("{:.0}", app.doc.device.width), &format!("{:.0}", app.doc.device.height), &app.machine_state])).color(crate::theme::p().text_dim));
 }
 
-fn move_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn move_tab(app: &mut RayEtch, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.label(tr("Distanza"));
         ui.add(crate::i18n::dv(&mut app.jog_dist).speed(0.5).range(0.01..=500.0).suffix(" mm"));
@@ -2156,7 +2156,7 @@ fn move_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
     }
 }
 
-fn console_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn console_tab(app: &mut RayEtch, ui: &mut egui::Ui) {
     egui::Frame::new().fill(crate::theme::p().field).corner_radius(4).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
         ui.set_min_height(200.0);
         ui.set_width(ui.available_width());
@@ -2187,7 +2187,7 @@ fn console_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
     });
 }
 
-fn shape_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
+fn shape_tab(app: &mut RayEtch, ui: &mut egui::Ui) {
     let frame_nr = ui.ctx().cumulative_frame_nr();
     if app.selection.len() != 1 {
         ui.label(egui::RichText::new(if app.selection.is_empty() { tr("Nessuna forma selezionata.") } else { tr("Più forme selezionate.") }).color(crate::theme::p().text_dim));
@@ -2302,7 +2302,7 @@ fn shape_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
 
 /// The Offset dialog, laid out like the original's: distance on top, then Direzione, Stile angolo
 /// and Opzioni side by side, Cancel / OK at the bottom. Every change redraws the preview.
-fn offset_window(app: &mut BeamForge, ctx: &egui::Context) {
+fn offset_window(app: &mut RayEtch, ctx: &egui::Context) {
     use crate::offset::{Corner, Direction, OFFSET_MAX_MM, OFFSET_MIN_MM};
     if !app.offset_open {
         return;
@@ -2424,7 +2424,7 @@ fn fill_editor(ui: &mut egui::Ui, cs: &mut CutSetting, tab: u8) -> bool {
                     changed |= ui.add(egui::DragValue::new(&mut cs.passes).range(1..=1000)).changed();
                     ui.label("");
                     ui.end_row();
-                    // Z offset / Z step need a Z axis, which BeamForge's devices don't have
+                    // Z offset / Z step need a Z axis, which RayEtch's devices don't have
                     ui.add_enabled(false, egui::Label::new(tr("Offset Z (mm)")));
                     ui.add_enabled(false, dv(&mut cs.z_offset).max_decimals(2).min_decimals(2));
                     ui.label(egui::RichText::new(tr("(nessuno)")).color(crate::theme::p().text_dim));
@@ -2851,7 +2851,7 @@ fn dither_example_rgba(cs: &CutSetting, w: usize, h: usize) -> Vec<u8> {
     rgba
 }
 
-pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn windows(app: &mut RayEtch, ctx: &egui::Context) {
     offset_window(app, ctx);
     if let Some(l) = app.editor_layer {
         app.doc.lock_cut_mode(l);
@@ -3209,17 +3209,17 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
 
     if app.show_about {
         let mut open = true;
-        theme::centered(ctx, "about", egui::Window::new(tr("Informazioni su BeamForge")).open(&mut open).resizable(false).collapsible(false)).show(ctx, |ui| {
+        theme::centered(ctx, "about", egui::Window::new(tr("Informazioni su RayEtch")).open(&mut open).resizable(false).collapsible(false)).show(ctx, |ui| {
             // same order as the original's About page (HelpDialog::HelpDialog 0x100c1a2b8): who made it,
             // when it was built (UTC), the licence, then the third-party components with their licences.
-            // The original's "License Validation Date" lines are left out: BeamForge needs no licence key.
-            ui.heading(egui::RichText::new(format!("◆ BeamForge {}", crate::update::current())).color(ACCENT));
+            // The original's "License Validation Date" lines are left out: RayEtch needs no licence key.
+            ui.heading(egui::RichText::new(format!("◆ RayEtch {}", crate::update::current())).color(ACCENT));
             ui.label(tr("Software libero per progettare e controllare laser."));
             ui.add_space(6.0);
             ui.label("Copyright © 2026 servimmagine");
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(tr("Compilato il:")).strong());
-                ui.label(format!("{} UTC", env!("BEAMFORGE_BUILD_UTC")));
+                ui.label(format!("{} UTC", env!("RAYETCH_BUILD_UTC")));
             });
             ui.add_space(6.0);
             ui.label(tr("Licenza open source Apache 2.0: libero da usare, copiare e modificare. Nessuna prova a tempo, nessuna attivazione."));
@@ -3248,7 +3248,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
 /// Help > Updates (CheckForUpdatesDialog::download_complete 0x10079e06c: "Your version is up to date." /
 /// "A newer version (%1) is available - would you like to download it?"). The daily quiet check
 /// opens it only when something newer was found.
-fn updates_window(app: &mut BeamForge, ctx: &egui::Context) {
+fn updates_window(app: &mut RayEtch, ctx: &egui::Context) {
     use crate::update::State;
     let state = app.updates.state();
     if app.updates.quiet && matches!(state, State::Newer(_) | State::Installed { .. } | State::InstallFailed { .. }) {
@@ -3333,7 +3333,7 @@ fn updates_window(app: &mut BeamForge, ctx: &egui::Context) {
             }
             State::Downloading { release, file, total } => {
                 let done = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
-                ui.label(crate::i18n::trf("Download di BeamForge {}…", &[&release.version]));
+                ui.label(crate::i18n::trf("Download di RayEtch {}…", &[&release.version]));
                 let mb = |b: u64| b as f64 / 1_048_576.0;
                 let bar = if *total > 0 {
                     egui::ProgressBar::new((done as f32 / *total as f32).min(1.0)).text(format!("{:.1} / {:.1} MB", mb(done), mb(*total)))
@@ -3346,12 +3346,12 @@ fn updates_window(app: &mut BeamForge, ctx: &egui::Context) {
             State::Installing(release) => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(crate::i18n::trf("Installazione di BeamForge {}…", &[&release.version]));
+                    ui.label(crate::i18n::trf("Installazione di RayEtch {}…", &[&release.version]));
                 });
             }
             State::Installed { version, relaunch } => {
-                ui.label(egui::RichText::new(crate::i18n::trf("BeamForge {} è installato.", &[version])).strong().color(ACCENT));
-                ui.label(tr("Riavvia per usare la nuova versione. Se ci sono modifiche non salvate, BeamForge te lo chiede prima."));
+                ui.label(egui::RichText::new(crate::i18n::trf("RayEtch {} è installato.", &[version])).strong().color(ACCENT));
+                ui.label(tr("Riavvia per usare la nuova versione. Se ci sono modifiche non salvate, RayEtch te lo chiede prima."));
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     if ui.add(egui::Button::new(egui::RichText::new(tr("Riavvia ora")).color(Color32::WHITE)).fill(ACCENT)).clicked() {
@@ -3395,7 +3395,7 @@ fn updates_window(app: &mut BeamForge, ctx: &egui::Context) {
         app.updates.install(ctx, r);
     }
     if let Some(path) = restart {
-        // started as BeamForge exits (on_exit), after the save question if one is needed
+        // started as RayEtch exits (on_exit), after the save question if one is needed
         app.relaunch_on_exit = Some(path);
         app.request_close(crate::app::PendingClose::Quit, ctx);
     }

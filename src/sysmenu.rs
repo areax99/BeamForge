@@ -1,7 +1,7 @@
 //! macOS system menu bar (the original uses the system menu, not one inside the window).
 
 use crate::i18n::tr;
-use crate::app::{BeamForge, RightTab};
+use crate::app::{RayEtch, RightTab};
 use eframe::egui;
 use muda::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu, accelerator::{Accelerator, Code, Modifiers}};
 use std::sync::{Mutex, Once, OnceLock};
@@ -27,7 +27,7 @@ fn item(id: &str, text: &str, acc: Option<Accelerator>) -> MenuItem {
     m
 }
 
-impl BeamForge {
+impl RayEtch {
     /// Whether an action can run now; when it can't, its menu item and button are greyed out.
     /// Like the original (MainWindow::UpdateActionsStatus 0x100c39980 enables each action from
     /// Core_Checks::UpdateSelectionStatus): selection actions need a selection, arranging needs
@@ -69,7 +69,7 @@ impl BeamForge {
 }
 
 /// Grey out the menu-bar items that can't run now (only the ones whose state changed).
-fn refresh_enabled(app: &BeamForge) {
+fn refresh_enabled(app: &RayEtch) {
     ITEMS.with(|v| {
         for (m, last) in v.borrow_mut().iter_mut() {
             let on = app.can(&m.id().0);
@@ -110,13 +110,13 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
     let sep = PredefinedMenuItem::separator;
 
     let app_menu = Submenu::with_items(
-        "BeamForge",
+        "RayEtch",
         true,
         &[
             &PredefinedMenuItem::about(
-                Some(tr("Informazioni su BeamForge")),
+                Some(tr("Informazioni su RayEtch")),
                 Some(AboutMetadata {
-                    name: Some("BeamForge".into()),
+                    name: Some("RayEtch".into()),
                     version: Some("1.0".into()),
                     comments: Some(tr("Software libero per laser, licenza Apache 2.0. Nessuna attivazione richiesta.").into()),
                     ..Default::default()
@@ -125,11 +125,11 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
             &sep(),
             &PredefinedMenuItem::services(Some(tr("Servizi"))),
             &sep(),
-            &PredefinedMenuItem::hide(Some(tr("Nascondi BeamForge"))),
+            &PredefinedMenuItem::hide(Some(tr("Nascondi RayEtch"))),
             &PredefinedMenuItem::hide_others(Some(tr("Nascondi altre"))),
             &PredefinedMenuItem::show_all(Some(tr("Mostra tutte"))),
             &sep(),
-            &item("quit", tr("Esci da BeamForge"), cmd(Code::KeyQ)),
+            &item("quit", tr("Esci da RayEtch"), cmd(Code::KeyQ)),
         ],
     )
     .ok()?;
@@ -167,7 +167,7 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
             &sep(),
             &item("select_all", tr("Seleziona tutto (⌘A)"), None),
             &sep(),
-            // NoRole in the original, so it stays here and not in the app menu (MECHANICS.md, "Menu BeamForge").
+            // NoRole in the original, so it stays here and not in the app menu (MECHANICS.md, "Menu RayEtch").
             &item("device", tr("Impostazioni dispositivo…"), None),
             // the running original has "Impostazioni" at the end of its Edit menu and none in the
             // app menu (measured, MECHANICS.md round 65)
@@ -259,7 +259,7 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
     )
     .ok()?;
 
-    let help = Submenu::with_items(tr("Guida"), true, &[&item("updates", tr("Aggiornamenti…"), None), &item("about", tr("Informazioni su BeamForge"), None)]).ok()?;
+    let help = Submenu::with_items(tr("Guida"), true, &[&item("updates", tr("Aggiornamenti…"), None), &item("about", tr("Informazioni su RayEtch"), None)]).ok()?;
 
     menu.append_items(&[&app_menu, &file, &edit, &tools, &arrange, &laser, &window, &help]).ok()?;
     #[cfg(target_os = "macos")]
@@ -283,7 +283,7 @@ pub fn install(ctx: &egui::Context) -> Option<SystemMenu> {
 }
 
 /// Run the actions chosen in the system menu since the last frame.
-pub fn handle(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn handle(app: &mut RayEtch, ctx: &egui::Context) {
     if app.system_menu.is_none() {
         return;
     }
@@ -297,7 +297,7 @@ pub fn handle(app: &mut BeamForge, ctx: &egui::Context) {
 }
 
 /// Run one menu action by its id (from the menu bar or the window's menu).
-pub fn run(app: &mut BeamForge, ctx: &egui::Context, id: &str) {
+pub fn run(app: &mut RayEtch, ctx: &egui::Context, id: &str) {
     {
         if let Some(t) = id.strip_prefix("tool_").and_then(|n| n.parse::<usize>().ok()).and_then(|n| crate::panels::TOOLBAR_TOOLS.get(n)) {
             app.tool = *t;

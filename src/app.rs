@@ -1,4 +1,4 @@
-//! BeamForge application state and document actions.
+//! RayEtch application state and document actions.
 
 use crate::i18n::{tr, trf};
 use crate::gcode::{self, Job, JobOptions, StartFrom};
@@ -147,7 +147,7 @@ pub fn auto_port_order(chosen: &str, ports: &[String]) -> Vec<String> {
     ports.iter().filter(|p| !skip(p) && usb_like(p)).cloned().collect()
 }
 
-pub struct BeamForge {
+pub struct RayEtch {
     pub doc: Document,
     pub path: Option<PathBuf>,
     pub dirty: bool,
@@ -262,7 +262,7 @@ pub struct BeamForge {
     pub combine_current: Option<crate::combine::CombineOp>,
     /// A held press already opened a button's menu; its release is not a click.
     pub menu_hold_opened: bool,
-    /// Test input played back frame by frame (BEAMFORGE_CLICKS).
+    /// Test input played back frame by frame (RAYETCH_CLICKS).
     pub input_script: Vec<(u32, egui::Event)>,
     pub input_frame: u32,
     pub title_cache: String,
@@ -298,7 +298,7 @@ pub enum PendingClose {
     Open(Option<PathBuf>),
 }
 
-impl BeamForge {
+impl RayEtch {
     pub fn new(cc: &eframe::CreationContext<'_>, screenshot: Option<PathBuf>) -> Self {
         let mut app = Self::create(cc, screenshot);
         // the general settings; checks start from the defaults so a run is always the same
@@ -323,11 +323,11 @@ impl BeamForge {
             app.use_device(i);
         }
         // test hook: show the save question at start (for --screenshot checks)
-        if std::env::var_os("BEAMFORGE_SHOW_SAVE_PROMPT").is_some() {
+        if std::env::var_os("RAYETCH_SHOW_SAVE_PROMPT").is_some() {
             app.confirm = Some(PendingClose::Quit);
         }
-        // BEAMFORGE_OPEN=settings,device,about (for testing) opens those windows at start
-        if let Ok(v) = std::env::var("BEAMFORGE_OPEN") {
+        // RAYETCH_OPEN=settings,device,about (for testing) opens those windows at start
+        if let Ok(v) = std::env::var("RAYETCH_OPEN") {
             app.show_settings = v.contains("settings");
             // settings,tab3: open Impostazioni on its fourth tab (for testing)
             if let Some(t) = v.split(',').find_map(|w| w.strip_prefix("tab")).and_then(|n| n.parse::<usize>().ok()) {
@@ -341,17 +341,17 @@ impl BeamForge {
                 // a pretend newer release, to see the install button
                 *app.updates.state.lock().unwrap() = crate::update::State::Newer(crate::update::Release {
                     version: "1.0.0-beta.2".into(),
-                    name: "BeamForge 1.0.0 Beta 2".into(),
+                    name: "RayEtch 1.0.0 Beta 2".into(),
                     notes: "Sample notes.".into(),
                     page: crate::update::RELEASES_PAGE.into(),
                     beta: true,
-                    asset: Some(("BeamForge-1.0.0-beta.2-macos-universal.zip".into(), String::new())),
+                    asset: Some(("RayEtch-1.0.0-beta.2-macos-universal.zip".into(), String::new())),
                     asset_size: 12_000_000,
                 });
             } else if app.show_updates {
                 app.updates.start(&cc.egui_ctx, false);
             }
-            // BEAMFORGE_OPEN=shapes: the shapes menu open, with one of each new shape drawn
+            // RAYETCH_OPEN=shapes: the shapes menu open, with one of each new shape drawn
             if v.contains("shapes") {
                 app.shape_menu_open = true;
                 let star = |middle| Geometry::Star { points: STAR_POINTS, rx: 40.0, ry: 40.0, inner: STAR_INNER, middle };
@@ -359,7 +359,7 @@ impl BeamForge {
                     app.doc.add_shape(Shape::new(0, g, 0, x, 200.0));
                 }
             }
-            // BEAMFORGE_OPEN=photo,preview (for testing): a 150 × 150 mm photo-like picture on an
+            // RAYETCH_OPEN=photo,preview (for testing): a 150 × 150 mm photo-like picture on an
             // Image layer at 0.1 mm, then the preview of its engraving (a job of about a million moves)
             if v.contains("photo") {
                 let px = 1500u32;
@@ -389,7 +389,7 @@ impl BeamForge {
                     }
                 }
             }
-            // BEAMFORGE_OPEN=legend: a black cut rectangle and a red filled ellipse, then the preview
+            // RAYETCH_OPEN=legend: a black cut rectangle and a red filled ellipse, then the preview
             // (its legend tells the two apart)
             if v.contains("legend") {
                 app.doc.add_shape(Shape::new(0, Geometry::Rect { w: 70.0, h: 140.0, radius: 0.0 }, 0, 120.0, 200.0));
@@ -398,21 +398,21 @@ impl BeamForge {
                 // legend,text: filled text on a blue Fill layer too
                 if v.contains("text") {
                     app.doc.layers[1].mode = CutMode::Fill;
-                    app.new_text = "BeamForge".into();
+                    app.new_text = "RayEtch".into();
                     app.text_size = 20.0;
                     app.current_layer = 1;
                     app.make_text_shape([120.0, 150.0]);
                 }
                 app.open_preview();
             }
-            // BEAMFORGE_OPEN=rotate: one rectangle picked and turned 20°, to show the rotate arrows
-            // (run with BEAMFORGE_SHIFT=1 so Shift counts as held)
+            // RAYETCH_OPEN=rotate: one rectangle picked and turned 20°, to show the rotate arrows
+            // (run with RAYETCH_SHIFT=1 so Shift counts as held)
             if v.contains("rotate") {
                 let a = app.doc.add_shape(Shape::new(0, Geometry::Rect { w: 120.0, h: 70.0, radius: 0.0 }, 0, 200.0, 220.0));
                 app.selection = vec![a];
                 app.rotate_sel(20.0);
             }
-            // BEAMFORGE_OPEN=combine: two overlapping squares picked, the combine menu open
+            // RAYETCH_OPEN=combine: two overlapping squares picked, the combine menu open
             // (and with "assist" the assistant showing the union)
             if v.contains("combine") {
                 let a = app.doc.add_shape(Shape::new(0, Geometry::Rect { w: 80.0, h: 80.0, radius: 0.0 }, 0, 160.0, 220.0));
@@ -472,19 +472,19 @@ impl BeamForge {
 
     fn create(cc: &eframe::CreationContext<'_>, screenshot: Option<PathBuf>) -> Self {
         // theme: the saved choice (themes/theme.ini in the settings folder), dark by default;
-        // BEAMFORGE_THEME=light|dark (for testing) overrides it for this run only
-        let light = std::env::var("BEAMFORGE_THEME").ok().map(|t| t == "light").unwrap_or_else(crate::theme::saved_light);
+        // RAYETCH_THEME=light|dark (for testing) overrides it for this run only
+        let light = std::env::var("RAYETCH_THEME").ok().map(|t| t == "light").unwrap_or_else(crate::theme::saved_light);
         crate::theme::set_light(&cc.egui_ctx, light);
         crate::theme::use_system_fonts(&cc.egui_ctx);
         crate::theme::STEADY_NO_SAVE.store(screenshot.is_some(), std::sync::atomic::Ordering::Relaxed);
         // language: the saved choice, otherwise the system's
         crate::i18n::set(crate::i18n::load_choice().unwrap_or_else(crate::i18n::system_lang));
-        // BEAMFORGE_LANG=de (for testing) overrides it for this run only
-        if let Some(l) = std::env::var("BEAMFORGE_LANG").ok().and_then(|c| crate::i18n::Lang::from_code(&c)) {
+        // RAYETCH_LANG=de (for testing) overrides it for this run only
+        if let Some(l) = std::env::var("RAYETCH_LANG").ok().and_then(|c| crate::i18n::Lang::from_code(&c)) {
             crate::i18n::set(l);
         }
         let ports = crate::laser::list_ports();
-        BeamForge {
+        RayEtch {
             doc: Document::default(),
             path: None,
             dirty: false,
@@ -523,7 +523,7 @@ impl BeamForge {
             head_pos: None,
             job_progress: None,
             paused: false,
-            console: vec![tr("BeamForge 1.0 — software laser libero, licenza open source Apache 2.0. Nessuna attivazione richiesta.").into()],
+            console: vec![tr("RayEtch 1.0 — software laser libero, licenza open source Apache 2.0. Nessuna attivazione richiesta.").into()],
             console_input: String::new(),
             jog_dist: 10.0,
             jog_speed: 3000.0,
@@ -556,7 +556,7 @@ impl BeamForge {
             scale_pct: [100.0, 100.0],
             status: tr("Pronto").into(),
             screenshot: screenshot.map(|path| ScreenshotState { path, frames: 0, requested: false, image: Arc::new(Mutex::new(None)) }),
-            new_text: "BeamForge".into(),
+            new_text: "RayEtch".into(),
             text_size: 20.0,
             text_font: crate::text::fonts()[0].name.clone(),
             polygon_sides: 6,
@@ -745,7 +745,7 @@ impl BeamForge {
     }
 
     fn open_dialog_now(&mut self) {
-        if let Some(p) = rfd::FileDialog::new().add_filter(tr("BeamForge project"), &["beamforge", "json"]).pick_file() {
+        if let Some(p) = rfd::FileDialog::new().add_filter(tr("RayEtch project"), &["rayetch", "beamforge", "json"]).pick_file() {
             self.open_path_now(p);
         }
     }
@@ -775,7 +775,7 @@ impl BeamForge {
 
     pub fn save(&mut self, save_as: bool) {
         let path = if save_as || self.path.is_none() {
-            rfd::FileDialog::new().add_filter(tr("BeamForge project"), &["beamforge"]).set_file_name("design.beamforge").save_file()
+            rfd::FileDialog::new().add_filter(tr("RayEtch project"), &["rayetch"]).set_file_name("design.rayetch").save_file()
         } else {
             self.path.clone()
         };
@@ -829,9 +829,9 @@ impl BeamForge {
     /// offline; the window stays usable meanwhile and the import can be cancelled.
     /// --screenshot runs import at once, so their test setups see the shapes straight away.
     pub fn import_path(&mut self, p: &std::path::Path) {
-        // BEAMFORGE_ASYNC_IMPORT=1 (for testing): a --screenshot run imports in the background too,
+        // RAYETCH_ASYNC_IMPORT=1 (for testing): a --screenshot run imports in the background too,
         // to see the "Importing…" window
-        if self.screenshot.is_some() && std::env::var_os("BEAMFORGE_ASYNC_IMPORT").is_none() {
+        if self.screenshot.is_some() && std::env::var_os("RAYETCH_ASYNC_IMPORT").is_none() {
             let r = crate::formats::import_file(p);
             self.finish_import(p, r);
             return;
@@ -1070,7 +1070,7 @@ impl BeamForge {
         // "Ignora il pulsante Avvio se il monitor è spento / inattivo": a start that comes while
         // the window isn't in front (screen asleep, another app active) is ignored
         if self.prefs.ignore_start_when_monitor_off && !self.window_focused {
-            self.status = tr("Avvio ignorato: la finestra di BeamForge non è attiva").into();
+            self.status = tr("Avvio ignorato: la finestra di RayEtch non è attiva").into();
             return;
         }
         // "Abilita la lista di controllo lavori" (device settings): each item must be ticked first
@@ -1318,7 +1318,7 @@ impl BeamForge {
     pub fn copy(&mut self) {
         self.clipboard = self.selected_shapes();
         // "Usa appunti di sistema": the copy also goes on the system clipboard, so another
-        // BeamForge window can paste it
+        // RayEtch window can paste it
         if self.prefs.use_system_clipboard && !self.clipboard.is_empty() {
             if let Ok(json) = serde_json::to_string(&self.clipboard) {
                 self.clip_out = Some(format!("{CLIP_MARK}{json}"));
@@ -1729,7 +1729,7 @@ impl BeamForge {
     }
 
     /// Change the language (None = follow the system), remember it and rebuild the system menu.
-    /// Keep the settings from the Impostazioni window and act on the ones BeamForge uses.
+    /// Keep the settings from the Impostazioni window and act on the ones RayEtch uses.
     pub fn apply_prefs(&mut self, new: crate::prefs::Prefs, ctx: &egui::Context) {
         use crate::prefs::AppTheme;
         let old = std::mem::replace(&mut self.prefs, new);
@@ -1858,7 +1858,7 @@ impl BeamForge {
     }
 
     /// "Intervallo di salvataggio automatico": every so many minutes, when there are unsaved
-    /// changes, a safety copy of the project goes to autosave.beamforge in the settings folder.
+    /// changes, a safety copy of the project goes to autosave.rayetch in the settings folder.
     fn autosave(&mut self, ctx: &egui::Context) {
         let mins = self.prefs.autosave_minutes;
         if mins == 0 || self.screenshot.is_some() {
@@ -1870,7 +1870,7 @@ impl BeamForge {
         }
         self.last_autosave = now;
         if self.dirty {
-            crate::i18n::save_json("autosave.beamforge", &self.doc);
+            crate::i18n::save_json("autosave.rayetch", &self.doc);
         }
     }
 
@@ -1900,7 +1900,7 @@ impl BeamForge {
         if !self.doc.device.laser1_name.trim().is_empty() {
             t.push_str(&format!(" ({})", self.doc.device.laser1_name.trim()));
         }
-        t.push_str(" - BeamForge");
+        t.push_str(" - RayEtch");
         if t != self.title_cache {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(t.clone()));
             self.title_cache = t;
@@ -1911,14 +1911,14 @@ impl BeamForge {
         let Some(ss) = self.screenshot.as_mut() else { return };
         ss.frames += 1;
         ctx.request_repaint();
-        // BEAMFORGE_OPEN=editor,fill,switch (for testing): halfway, the layer goes back to Line,
+        // RAYETCH_OPEN=editor,fill,switch (for testing): halfway, the layer goes back to Line,
         // to see that the editor keeps the size it had with the Fill options
-        if ss.frames == 60 && std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("switch")) {
+        if ss.frames == 60 && std::env::var("RAYETCH_OPEN").is_ok_and(|v| v.contains("switch")) {
             self.doc.layers[0].mode = CutMode::Line;
         }
-        // BEAMFORGE_OPEN=editor,cycle (for measuring): every 10 frames the editor shows another mode and
-        // tab, with tabs on, so each state's size is seen; BEAMFORGE_DUMP_SIZES prints the sizes at the end
-        if std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("cycle")) && ss.frames % 10 == 0 && ss.frames < 100 {
+        // RAYETCH_OPEN=editor,cycle (for measuring): every 10 frames the editor shows another mode and
+        // tab, with tabs on, so each state's size is seen; RAYETCH_DUMP_SIZES prints the sizes at the end
+        if std::env::var("RAYETCH_OPEN").is_ok_and(|v| v.contains("cycle")) && ss.frames % 10 == 0 && ss.frames < 100 {
             let k = (ss.frames / 10) as usize;
             let modes = [CutMode::Line, CutMode::Fill, CutMode::OffsetFill, CutMode::Image];
             self.doc.layers[0].mode = modes[k % 4];
@@ -1926,20 +1926,20 @@ impl BeamForge {
             self.doc.layers[0].tabs_enabled = true;
             self.doc.layers[0].manual_tabs = k % 2 == 1;
         }
-        // BEAMFORGE_OPEN=editor,image,imgmodes (for measuring): every 9 frames the Image editor shows
+        // RAYETCH_OPEN=editor,image,imgmodes (for measuring): every 9 frames the Image editor shows
         // another image mode (all twelve, 3D Slice on one pass to show its warning), so each text's size is seen
-        if std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("imgmodes")) && ss.frames % 9 == 0 && ss.frames < 108 {
+        if std::env::var("RAYETCH_OPEN").is_ok_and(|v| v.contains("imgmodes")) && ss.frames % 9 == 0 && ss.frames < 108 {
             let k = (ss.frames / 9) as usize;
             let cs = &mut self.doc.layers[0];
             cs.image_mode = ImageMode::ALL[k % ImageMode::ALL.len()];
             cs.passes = 1;
         }
-        // BEAMFORGE_OPEN=material,cycle: the test generator opens each of its three inline editors in turn
-        if std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("material") && v.contains("cycle")) && ss.frames % 20 == 0 && ss.frames < 100 {
+        // RAYETCH_OPEN=material,cycle: the test generator opens each of its three inline editors in turn
+        if std::env::var("RAYETCH_OPEN").is_ok_and(|v| v.contains("material") && v.contains("cycle")) && ss.frames % 20 == 0 && ss.frames < 100 {
             let e = (ss.frames / 20) as usize;
             ctx.data_mut(|d| d.insert_temp(egui::Id::new("mt_editing"), if e <= 3 { Some(e - 1) } else { None::<usize> }));
         }
-        if ss.frames == 118 && std::env::var_os("BEAMFORGE_DUMP_SIZES").is_some() {
+        if ss.frames == 118 && std::env::var_os("RAYETCH_DUMP_SIZES").is_some() {
             println!("{}", crate::theme::dump_sizes());
         }
         if ss.frames >= 120 && !ss.requested {
@@ -1976,10 +1976,10 @@ impl BeamForge {
     }
 }
 
-/// Mouse input played back for testing: BEAMFORGE_CLICKS="frame:click:x,y;frame:drag:x1,y1,x2,y2"
+/// Mouse input played back for testing: RAYETCH_CLICKS="frame:click:x,y;frame:drag:x1,y1,x2,y2"
 /// (window points). Each step becomes the pointer events a person's hand would make.
 pub fn scripted_input() -> Vec<(u32, egui::Event)> {
-    let Ok(script) = std::env::var("BEAMFORGE_CLICKS") else { return Vec::new() };
+    let Ok(script) = std::env::var("RAYETCH_CLICKS") else { return Vec::new() };
     let mut out = Vec::new();
     let mv = |x: f32, y: f32| egui::Event::PointerMoved(egui::pos2(x, y));
     let btn = |x: f32, y: f32, pressed: bool| egui::Event::PointerButton { pos: egui::pos2(x, y), button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
@@ -2013,7 +2013,7 @@ pub fn scripted_input() -> Vec<(u32, egui::Event)> {
     out
 }
 
-impl eframe::App for BeamForge {
+impl eframe::App for RayEtch {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if let Some(p) = self.relaunch_on_exit.take() {
             crate::update::relaunch(&p);
@@ -2021,8 +2021,8 @@ impl eframe::App for BeamForge {
     }
 
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
-        // BEAMFORGE_SHIFT=1 (for testing): Shift counts as held the whole run
-        if std::env::var_os("BEAMFORGE_SHIFT").is_some() {
+        // RAYETCH_SHIFT=1 (for testing): Shift counts as held the whole run
+        if std::env::var_os("RAYETCH_SHIFT").is_some() {
             raw_input.events.push(egui::Event::ModifiersChanged(egui::Modifiers::SHIFT));
         }
         if self.input_script.is_empty() {
@@ -2082,7 +2082,7 @@ impl eframe::App for BeamForge {
     }
 }
 
-impl BeamForge {
+impl RayEtch {
     /// Once a day, 2 s after start, look for a newer version quietly (MainWindow::runUpdateCheck
     /// 0x10068122c). Off in --screenshot runs and when the person turned it off in Updates.
     fn auto_update_check(&mut self, ctx: &egui::Context) {
@@ -2139,12 +2139,12 @@ impl BeamForge {
         if sc(cmd, Key::X) {
             self.cut();
         }
-        // "Usa appunti di sistema": shapes copied in any BeamForge window come in from the system
+        // "Usa appunti di sistema": shapes copied in any RayEtch window come in from the system
         // clipboard (a paste brings its text as an event)
         let from_system: Option<Vec<Shape>> = if self.prefs.use_system_clipboard {
             ctx.input(|i| {
                 i.events.iter().find_map(|e| match e {
-                    egui::Event::Paste(t) => t.strip_prefix(CLIP_MARK).and_then(|j| serde_json::from_str(j).ok()),
+                    egui::Event::Paste(t) => t.strip_prefix(CLIP_MARK).or_else(|| t.strip_prefix(OLD_CLIP_MARK)).and_then(|j| serde_json::from_str(j).ok()),
                     _ => None,
                 })
             })
@@ -2228,8 +2228,10 @@ impl BeamForge {
     }
 }
 
-/// Start of the text BeamForge puts on the system clipboard for copied shapes.
-pub const CLIP_MARK: &str = "BEAMFORGE-SHAPES\n";
+/// Start of the text RayEtch puts on the system clipboard for copied shapes.
+pub const CLIP_MARK: &str = "RAYETCH-SHAPES\n";
+/// The same mark from before the program was renamed (BeamForge), still read on paste.
+const OLD_CLIP_MARK: &str = "BEAMFORGE-SHAPES\n";
 
 /// The system's error sound (Riproduci il suono dell'errore se l'invio del file fallisce).
 fn error_sound() {

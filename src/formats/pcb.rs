@@ -29,7 +29,7 @@ pub enum Function {
     Other,
 }
 
-/// BeamForge layer for each board function (estimated: the original picks colours per function
+/// RayEtch layer for each board function (estimated: the original picks colours per function
 /// and side in GerberTranslator::LayerColorFor 0x10009e368).
 pub fn layer_of(f: Function) -> usize {
     match f {

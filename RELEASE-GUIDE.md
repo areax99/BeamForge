@@ -1,4 +1,4 @@
-# BeamForge Build Guide
+# RayEtch Build Guide
 
 [English](#english) · [Italiano](#italiano) · [Español](#español) · [Français](#français) · [Deutsch](#deutsch)
 
@@ -6,7 +6,7 @@
 
 ## English
 
-This guide explains how to compile BeamForge on macOS, Windows, and Linux. Build on the target operating system whenever possible; cross-compiling can require additional tools and is not covered here.
+This guide explains how to compile RayEtch on macOS, Windows, and Linux. Build on the target operating system whenever possible; cross-compiling can require additional tools and is not covered here.
 
 ### Before you start
 
@@ -61,7 +61,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 Open a new terminal and check `rustc --version` and `cargo --version`. The listed native packages provide the C toolchain, GTK3, udev/systemd headers, and `pkg-config` required by dependencies.
 
-### Build BeamForge
+### Build RayEtch
 
 Run commands from the project root, the directory containing `Cargo.toml`.
 
@@ -81,7 +81,7 @@ sh scripts/macos-app.sh intel
 sh scripts/macos-app.sh universal
 ```
 
-The app is created at `dist/BeamForge.app`. The script installs missing Rust targets with rustup and signs the app locally. Universal includes both Apple Silicon and Intel; it requires Xcode Command Line Tools. The resulting app is not notarized by Apple.
+The app is created at `dist/RayEtch.app`. The script installs missing Rust targets with rustup and signs the app locally. Universal includes both Apple Silicon and Intel; it requires Xcode Command Line Tools. The resulting app is not notarized by Apple.
 
 #### Windows
 
@@ -91,7 +91,7 @@ On a Windows PC, open PowerShell in the project root and run:
 cargo build --release
 ```
 
-The executable is created at `target\release\beamforge.exe`. If compilation appears idle, check Task Manager; Rust may still be compiling a dependency. On a computer with limited memory, reduce parallel build jobs:
+The executable is created at `target\release\rayetch.exe`. If compilation appears idle, check Task Manager; Rust may still be compiling a dependency. On a computer with limited memory, reduce parallel build jobs:
 
 ```powershell
 $env:CARGO_BUILD_JOBS = "2"
@@ -102,13 +102,13 @@ The native MSVC C++ build tools and resource compiler must be available to Rust.
 
 #### Linux
 
-On the Linux computer, after installing the native packages listed above, the simplest option is to build and install BeamForge for the current user, including an application-menu entry:
+On the Linux computer, after installing the native packages listed above, the simplest option is to build and install RayEtch for the current user, including an application-menu entry:
 
 ```sh
 sh scripts/install-linux.sh
 ```
 
-The script runs `cargo build --release`, then installs the executable, icon, and application-menu entry. If you only want to build the executable without installing it, run `cargo build --release`; it is created at `target/release/beamforge`. The destination computer must also provide the required system libraries.
+The script runs `cargo build --release`, then installs the executable, icon, and application-menu entry. If you only want to build the executable without installing it, run `cargo build --release`; it is created at `target/release/rayetch`. The destination computer must also provide the required system libraries.
 
 ### Verify the build
 
@@ -118,7 +118,7 @@ Confirm that the build finishes without errors, then launch the app or executabl
 
 ## Italiano
 
-Questa guida spiega come compilare BeamForge su macOS, Windows e Linux. Quando possibile, compila sul sistema operativo di destinazione: la compilazione incrociata può richiedere strumenti aggiuntivi e non è trattata qui.
+Questa guida spiega come compilare RayEtch su macOS, Windows e Linux. Quando possibile, compila sul sistema operativo di destinazione: la compilazione incrociata può richiedere strumenti aggiuntivi e non è trattata qui.
 
 ### Prima di iniziare
 
@@ -173,7 +173,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 Apri un nuovo terminale e verifica con `rustc --version` e `cargo --version`. I pacchetti nativi elencati forniscono la toolchain C, GTK3, gli header udev/systemd e `pkg-config` richiesti dalle dipendenze.
 
-### Compilare BeamForge
+### Compilare RayEtch
 
 Esegui i comandi dalla cartella principale del progetto, dove si trova `Cargo.toml`.
 
@@ -193,7 +193,7 @@ sh scripts/macos-app.sh intel
 sh scripts/macos-app.sh universal
 ```
 
-L'app viene creata in `dist/BeamForge.app`. Lo script installa con rustup gli eventuali target Rust mancanti e firma l'app localmente. Universal include Apple Silicon e Intel e richiede gli Xcode Command Line Tools. L'app risultante non è autenticata da Apple.
+L'app viene creata in `dist/RayEtch.app`. Lo script installa con rustup gli eventuali target Rust mancanti e firma l'app localmente. Universal include Apple Silicon e Intel e richiede gli Xcode Command Line Tools. L'app risultante non è autenticata da Apple.
 
 #### Windows
 
@@ -203,7 +203,7 @@ Su un PC Windows, apri PowerShell nella cartella principale del progetto ed eseg
 cargo build --release
 ```
 
-L'eseguibile viene creato in `target\release\beamforge.exe`. Se sembra ferma, controlla Gestione attività: Rust potrebbe essere ancora impegnato a compilare una dipendenza. Su un computer con poca memoria puoi limitare i processi di compilazione:
+L'eseguibile viene creato in `target\release\rayetch.exe`. Se sembra ferma, controlla Gestione attività: Rust potrebbe essere ancora impegnato a compilare una dipendenza. Su un computer con poca memoria puoi limitare i processi di compilazione:
 
 ```powershell
 $env:CARGO_BUILD_JOBS = "2"
@@ -214,13 +214,13 @@ Gli strumenti di compilazione C++ nativi MSVC e il compilatore di risorse devono
 
 #### Linux
 
-Sul computer Linux, dopo aver installato i pacchetti nativi elencati sopra, il modo più semplice è compilare e installare BeamForge per l'utente corrente, aggiungendo anche una voce al menu delle applicazioni:
+Sul computer Linux, dopo aver installato i pacchetti nativi elencati sopra, il modo più semplice è compilare e installare RayEtch per l'utente corrente, aggiungendo anche una voce al menu delle applicazioni:
 
 ```sh
 sh scripts/install-linux.sh
 ```
 
-Lo script esegue `cargo build --release`, poi installa l'eseguibile, l'icona e la voce nel menu delle applicazioni. Se vuoi soltanto compilare l'eseguibile senza installarlo, esegui `cargo build --release`; lo troverai in `target/release/beamforge`. Il computer di destinazione deve avere anche le librerie di sistema necessarie.
+Lo script esegue `cargo build --release`, poi installa l'eseguibile, l'icona e la voce nel menu delle applicazioni. Se vuoi soltanto compilare l'eseguibile senza installarlo, esegui `cargo build --release`; lo troverai in `target/release/rayetch`. Il computer di destinazione deve avere anche le librerie di sistema necessarie.
 
 ### Verificare la compilazione
 
@@ -230,7 +230,7 @@ Controlla che la compilazione termini senza errori e avvia l'app o l'eseguibile 
 
 ## Español
 
-Esta guía explica cómo compilar BeamForge en macOS, Windows y Linux. Siempre que sea posible, compila en el sistema operativo de destino; la compilación cruzada puede requerir herramientas adicionales y no se trata aquí.
+Esta guía explica cómo compilar RayEtch en macOS, Windows y Linux. Siempre que sea posible, compila en el sistema operativo de destino; la compilación cruzada puede requerir herramientas adicionales y no se trata aquí.
 
 ### Antes de empezar
 
@@ -285,7 +285,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 Abre una terminal nueva y comprueba `rustc --version` y `cargo --version`. Los paquetes nativos proporcionan las herramientas C, GTK3, los encabezados de udev/systemd y `pkg-config` que necesitan las dependencias.
 
-### Compilar BeamForge
+### Compilar RayEtch
 
 Ejecuta los comandos desde la raíz del proyecto, donde está `Cargo.toml`.
 
@@ -305,7 +305,7 @@ sh scripts/macos-app.sh intel
 sh scripts/macos-app.sh universal
 ```
 
-La aplicación se crea en `dist/BeamForge.app`. El script instala con rustup los targets de Rust que falten y firma la aplicación localmente. Universal incluye Apple Silicon e Intel y requiere las herramientas de línea de comandos de Xcode. Apple no notariza la aplicación resultante.
+La aplicación se crea en `dist/RayEtch.app`. El script instala con rustup los targets de Rust que falten y firma la aplicación localmente. Universal incluye Apple Silicon e Intel y requiere las herramientas de línea de comandos de Xcode. Apple no notariza la aplicación resultante.
 
 #### Windows
 
@@ -315,7 +315,7 @@ En un PC con Windows, abre PowerShell en la raíz del proyecto y ejecuta:
 cargo build --release
 ```
 
-El ejecutable se crea en `target\release\beamforge.exe`. Si parece que la compilación se ha detenido, comprueba el Administrador de tareas: Rust quizá siga compilando una dependencia. En equipos con poca memoria, limita los procesos de compilación:
+El ejecutable se crea en `target\release\rayetch.exe`. Si parece que la compilación se ha detenido, comprueba el Administrador de tareas: Rust quizá siga compilando una dependencia. En equipos con poca memoria, limita los procesos de compilación:
 
 ```powershell
 $env:CARGO_BUILD_JOBS = "2"
@@ -326,13 +326,13 @@ Rust debe tener acceso a las herramientas nativas de compilación C++ de MSVC y 
 
 #### Linux
 
-En el ordenador Linux, después de instalar los paquetes nativos indicados, la opción más sencilla es compilar e instalar BeamForge para el usuario actual, incluyendo una entrada en el menú de aplicaciones:
+En el ordenador Linux, después de instalar los paquetes nativos indicados, la opción más sencilla es compilar e instalar RayEtch para el usuario actual, incluyendo una entrada en el menú de aplicaciones:
 
 ```sh
 sh scripts/install-linux.sh
 ```
 
-El script ejecuta `cargo build --release` y después instala el ejecutable, el icono y la entrada del menú de aplicaciones. Si solo quieres compilar el ejecutable sin instalarlo, ejecuta `cargo build --release`; se crea en `target/release/beamforge`. El equipo de destino también debe tener las bibliotecas de sistema necesarias.
+El script ejecuta `cargo build --release` y después instala el ejecutable, el icono y la entrada del menú de aplicaciones. Si solo quieres compilar el ejecutable sin instalarlo, ejecuta `cargo build --release`; se crea en `target/release/rayetch`. El equipo de destino también debe tener las bibliotecas de sistema necesarias.
 
 ### Verificar la compilación
 
@@ -342,7 +342,7 @@ Comprueba que la compilación termine sin errores y ejecuta la aplicación o el 
 
 ## Français
 
-Ce guide explique comment compiler BeamForge sur macOS, Windows et Linux. Dans la mesure du possible, compilez sur le système d'exploitation cible ; la compilation croisée peut nécessiter des outils supplémentaires et n'est pas abordée ici.
+Ce guide explique comment compiler RayEtch sur macOS, Windows et Linux. Dans la mesure du possible, compilez sur le système d'exploitation cible ; la compilation croisée peut nécessiter des outils supplémentaires et n'est pas abordée ici.
 
 ### Avant de commencer
 
@@ -397,7 +397,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 Ouvrez un nouveau terminal et vérifiez `rustc --version` et `cargo --version`. Les paquets natifs fournissent les outils C, GTK3, les en-têtes udev/systemd et `pkg-config` requis par les dépendances.
 
-### Compiler BeamForge
+### Compiler RayEtch
 
 Exécutez les commandes depuis la racine du projet, où se trouve `Cargo.toml`.
 
@@ -417,7 +417,7 @@ sh scripts/macos-app.sh intel
 sh scripts/macos-app.sh universal
 ```
 
-L'application est créée dans `dist/BeamForge.app`. Le script ajoute avec rustup les cibles Rust manquantes et signe l'application localement. Universal inclut Apple Silicon et Intel et nécessite les outils de ligne de commande Xcode. Apple ne notarie pas l'application obtenue.
+L'application est créée dans `dist/RayEtch.app`. Le script ajoute avec rustup les cibles Rust manquantes et signe l'application localement. Universal inclut Apple Silicon et Intel et nécessite les outils de ligne de commande Xcode. Apple ne notarie pas l'application obtenue.
 
 #### Windows
 
@@ -427,7 +427,7 @@ Sur un PC Windows, ouvrez PowerShell à la racine du projet et exécutez :
 cargo build --release
 ```
 
-L'exécutable est créé dans `target\release\beamforge.exe`. Si la compilation semble bloquée, vérifiez le Gestionnaire des tâches : Rust peut être en train de compiler une dépendance. Sur un ordinateur disposant de peu de mémoire, réduisez le nombre de tâches parallèles :
+L'exécutable est créé dans `target\release\rayetch.exe`. Si la compilation semble bloquée, vérifiez le Gestionnaire des tâches : Rust peut être en train de compiler une dépendance. Sur un ordinateur disposant de peu de mémoire, réduisez le nombre de tâches parallèles :
 
 ```powershell
 $env:CARGO_BUILD_JOBS = "2"
@@ -438,13 +438,13 @@ Les outils natifs de compilation C++ MSVC et le compilateur de ressources doiven
 
 #### Linux
 
-Sur l'ordinateur Linux, après avoir installé les paquets natifs indiqués ci-dessus, le plus simple est de compiler et d'installer BeamForge pour l'utilisateur actuel, avec une entrée dans le menu des applications :
+Sur l'ordinateur Linux, après avoir installé les paquets natifs indiqués ci-dessus, le plus simple est de compiler et d'installer RayEtch pour l'utilisateur actuel, avec une entrée dans le menu des applications :
 
 ```sh
 sh scripts/install-linux.sh
 ```
 
-Le script exécute `cargo build --release`, puis installe l'exécutable, l'icône et l'entrée du menu des applications. Si vous souhaitez uniquement compiler l'exécutable sans l'installer, exécutez `cargo build --release` ; il est créé dans `target/release/beamforge`. L'ordinateur doit également disposer des bibliothèques système requises.
+Le script exécute `cargo build --release`, puis installe l'exécutable, l'icône et l'entrée du menu des applications. Si vous souhaitez uniquement compiler l'exécutable sans l'installer, exécutez `cargo build --release` ; il est créé dans `target/release/rayetch`. L'ordinateur doit également disposer des bibliothèques système requises.
 
 ### Vérifier la compilation
 
@@ -454,7 +454,7 @@ Vérifiez que la compilation se termine sans erreur, puis lancez l'application o
 
 ## Deutsch
 
-Diese Anleitung beschreibt, wie BeamForge unter macOS, Windows und Linux kompiliert wird. Wenn möglich, sollte auf dem jeweiligen Zielbetriebssystem gebaut werden; Cross-Compiling kann zusätzliche Werkzeuge erfordern und wird hier nicht behandelt.
+Diese Anleitung beschreibt, wie RayEtch unter macOS, Windows und Linux kompiliert wird. Wenn möglich, sollte auf dem jeweiligen Zielbetriebssystem gebaut werden; Cross-Compiling kann zusätzliche Werkzeuge erfordern und wird hier nicht behandelt.
 
 ### Vor dem Start
 
@@ -509,7 +509,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 Öffne ein neues Terminal und prüfe `rustc --version` und `cargo --version`. Die nativen Pakete enthalten die C-Werkzeuge, GTK3, udev/systemd-Header und `pkg-config`, die von Abhängigkeiten benötigt werden.
 
-### BeamForge kompilieren
+### RayEtch kompilieren
 
 Führe die Befehle im Projekt-Hauptverzeichnis aus, in dem `Cargo.toml` liegt.
 
@@ -529,7 +529,7 @@ sh scripts/macos-app.sh intel
 sh scripts/macos-app.sh universal
 ```
 
-Die App wird unter `dist/BeamForge.app` erstellt. Das Skript ergänzt fehlende Rust-Targets mit rustup und signiert die App lokal. Universal enthält Apple Silicon und Intel und benötigt installierte Xcode Command Line Tools. Die erstellte App ist nicht von Apple notarisiert.
+Die App wird unter `dist/RayEtch.app` erstellt. Das Skript ergänzt fehlende Rust-Targets mit rustup und signiert die App lokal. Universal enthält Apple Silicon und Intel und benötigt installierte Xcode Command Line Tools. Die erstellte App ist nicht von Apple notarisiert.
 
 #### Windows
 
@@ -539,7 +539,7 @@ Die App wird unter `dist/BeamForge.app` erstellt. Das Skript ergänzt fehlende R
 cargo build --release
 ```
 
-Die ausführbare Datei wird unter `target\release\beamforge.exe` erstellt. Scheint der Build festzustecken, prüfe den Task-Manager; Rust kompiliert möglicherweise noch eine Abhängigkeit. Bei wenig Arbeitsspeicher lässt sich die Zahl paralleler Build-Prozesse begrenzen:
+Die ausführbare Datei wird unter `target\release\rayetch.exe` erstellt. Scheint der Build festzustecken, prüfe den Task-Manager; Rust kompiliert möglicherweise noch eine Abhängigkeit. Bei wenig Arbeitsspeicher lässt sich die Zahl paralleler Build-Prozesse begrenzen:
 
 ```powershell
 $env:CARGO_BUILD_JOBS = "2"
@@ -550,13 +550,13 @@ Die nativen MSVC-C++-Build-Werkzeuge und der Ressourcencompiler müssen für Rus
 
 #### Linux
 
-Am einfachsten ist es, BeamForge nach der Installation der oben genannten nativen Pakete für den aktuellen Benutzer zu kompilieren und zu installieren, einschließlich eines Eintrags im Anwendungsmenü:
+Am einfachsten ist es, RayEtch nach der Installation der oben genannten nativen Pakete für den aktuellen Benutzer zu kompilieren und zu installieren, einschließlich eines Eintrags im Anwendungsmenü:
 
 ```sh
 sh scripts/install-linux.sh
 ```
 
-Das Skript führt `cargo build --release` aus und installiert anschließend die ausführbare Datei, das Symbol und den Eintrag im Anwendungsmenü. Wenn du die ausführbare Datei nur erstellen, aber nicht installieren möchtest, führe `cargo build --release` aus; sie wird unter `target/release/beamforge` erstellt. Die benötigten Systembibliotheken müssen auch auf dem Zielrechner vorhanden sein.
+Das Skript führt `cargo build --release` aus und installiert anschließend die ausführbare Datei, das Symbol und den Eintrag im Anwendungsmenü. Wenn du die ausführbare Datei nur erstellen, aber nicht installieren möchtest, führe `cargo build --release` aus; sie wird unter `target/release/rayetch` erstellt. Die benötigten Systembibliotheken müssen auch auf dem Zielrechner vorhanden sein.
 
 ### Build überprüfen
 

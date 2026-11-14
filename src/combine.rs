@@ -2,7 +2,7 @@
 //! (MainWindow::BooleanOperation 0x100c56cf4 → BooleanOperator::Compute 0x100179f88), and the
 //! assistant window that tries each result (BooleanHelper 0x10081c240).
 
-use crate::app::BeamForge;
+use crate::app::RayEtch;
 use crate::i18n::tr;
 use crate::model::*;
 use crate::theme::{self, ACCENT};
@@ -95,7 +95,7 @@ pub struct CombineAssist {
     pub shown: Option<CombineOp>,
 }
 
-impl BeamForge {
+impl RayEtch {
     /// The two picked objects, or a message when there aren't exactly two.
     fn two_objects(&mut self) -> Option<[Vec<u64>; 2]> {
         let items = self.selection_items();
@@ -218,7 +218,7 @@ pub fn paint_icon(p: &egui::Painter, c: Pos2, op: Option<CombineOp>, col: Color3
 
 /// The assistant window (BooleanHelper): pick a result, see it on the drawing, then OK keeps it
 /// and Annulla puts the objects back (on_BooleanHelper_rejected 0x10081d77c undoes).
-pub fn assistant_window(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn assistant_window(app: &mut RayEtch, ctx: &egui::Context) {
     let Some(a) = app.combine_assist.as_ref() else { return };
     let (applied, hover_ok) = (a.applied, a.hover_preview);
     let mut clicked: Option<Option<CombineOp>> = None;
@@ -294,7 +294,7 @@ pub fn assistant_window(app: &mut BeamForge, ctx: &egui::Context) {
     }
 }
 
-impl BeamForge {
+impl RayEtch {
     /// OK keeps the chosen result as one undo step; Annulla / ✕ puts the objects back.
     fn assistant_finish(&mut self, a: CombineAssist, keep: bool) {
         self.doc = a.before;

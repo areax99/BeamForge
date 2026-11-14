@@ -1,4 +1,4 @@
-//! Layer handling for BeamForge.
+//! Layer handling for RayEtch.
 //! Mirrors LightBurn's CUT_PARAMS per‑layer defaults (fnd 1).
 
 use serde::{Deserialize, Serialize};

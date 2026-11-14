@@ -2,9 +2,9 @@
 //! (Dimensioni / Unità, Impostazioni di base, Altre impostazioni, Estensioni; the person's pictures
 //! 9-12). It works on a copy: OK applies it, Cancel or ✕ throws it away
 //! (MainWindow::on_actionDevice_Settings_triggered 0x100688400: QDialog::exec, applied on accept).
-//! BeamForge's own GRBL settings sit in a "Controller GRBL" box on the second tab.
+//! RayEtch's own GRBL settings sit in a "Controller GRBL" box on the second tab.
 
-use crate::app::BeamForge;
+use crate::app::RayEtch;
 use crate::i18n::{dv, tr, trf};
 use crate::model::{Device, OriginCorner, ScanOffset};
 use crate::panels::switch;
@@ -15,7 +15,7 @@ use eframe::egui::{self, Color32, vec2};
 const SIZE: egui::Vec2 = egui::Vec2::new(900.0, 600.0);
 const TABS: [&str; 4] = ["Dimensioni / Unità", "Impostazioni di base", "Altre impostazioni", "Estensioni"];
 
-/// Shown on what needs a feature BeamForge doesn't have yet.
+/// Shown on what needs a feature RayEtch doesn't have yet.
 fn later() -> &'static str {
     tr("In arrivo: questa funzione sarà aggiunta in un secondo momento. Per ora l'impostazione viene solo ricordata.")
 }
@@ -102,7 +102,7 @@ fn basic_tab(ui: &mut egui::Ui, d: &mut Device, edit_checklist: &mut bool, sel_r
                     *edit_checklist = true;
                 }
             });
-            // BeamForge has no rotary yet: shown off and greyed
+            // RayEtch has no rotary yet: shown off and greyed
             let mut no_rotary = false;
             ui.add_enabled_ui(false, |ui| {
                 switch(ui, &mut no_rotary, tr("Salva/carica le impostazioni dell'unità rotante con i file di progetto")).on_disabled_hover_text(later());
@@ -167,7 +167,7 @@ fn basic_tab(ui: &mut egui::Ui, d: &mut Device, edit_checklist: &mut bool, sel_r
             ui.label(egui::RichText::new(tr("Opzioni Laser 1")).strong());
             ui.horizontal(|ui| {
                 ui.label(tr("Nome Laser 1"));
-                ui.text_edit_singleline(&mut d.laser1_name).on_hover_text(tr("Mostrato nel titolo della finestra di BeamForge"));
+                ui.text_edit_singleline(&mut d.laser1_name).on_hover_text(tr("Mostrato nel titolo della finestra di RayEtch"));
             });
             switch(ui, &mut d.laser1_rf, tr("Laser 1 è un tubo RF")).on_hover_text(later());
             switch(ui, &mut d.laser1_fiber, tr("Laser 1 è a fibra")).on_hover_text(later());
@@ -191,7 +191,7 @@ fn basic_tab(ui: &mut egui::Ui, d: &mut Device, edit_checklist: &mut bool, sel_r
                 });
             });
         });
-        // BeamForge's own settings for GRBL controllers
+        // RayEtch's own settings for GRBL controllers
         group(ui, tr("Controller GRBL"), |ui| {
             egui::Grid::new("dev_grbl").num_columns(2).spacing(vec2(10.0, 5.0)).show(ui, |ui| {
                 ui.label(tr("Nome"));
@@ -288,7 +288,7 @@ fn import_scan_offsets() -> Option<Vec<ScanOffset>> {
     (!rows.is_empty()).then_some(rows)
 }
 
-pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn window(app: &mut RayEtch, ctx: &egui::Context) {
     checklist_window(app, ctx);
     if !app.show_device {
         return;
@@ -360,7 +360,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
 }
 
 /// "Modifica" of the job checklist: one item per line. Returns the text on OK.
-fn checklist_editor(app: &mut BeamForge, ctx: &egui::Context) -> Option<String> {
+fn checklist_editor(app: &mut RayEtch, ctx: &egui::Context) -> Option<String> {
     let mut text = app.checklist_text.take()?;
     let mut done: Option<bool> = None;
     theme::centered(ctx, "checklist_edit", egui::Window::new(tr("Lista di controllo lavori")).collapsible(false).resizable(false).fixed_size(vec2(440.0, 260.0))).show(ctx, |ui| {
@@ -386,7 +386,7 @@ fn checklist_editor(app: &mut BeamForge, ctx: &egui::Context) -> Option<String> 
 }
 
 /// Before a start with the checklist on: every item must be ticked, then Avvia starts the job.
-fn checklist_window(app: &mut BeamForge, ctx: &egui::Context) {
+fn checklist_window(app: &mut RayEtch, ctx: &egui::Context) {
     let Some(mut ticks) = app.checklist.take() else { return };
     let items = app.doc.device.job_checklist.clone();
     ticks.resize(items.len(), false);

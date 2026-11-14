@@ -3,7 +3,7 @@
 //! Estensioni (the person's pictures 3-8). Defaults are the values on those pictures. They are
 //! kept in prefs.json in the settings folder.
 //!
-//! Every option of the original is here and remembered. The ones BeamForge acts on are listed in
+//! Every option of the original is here and remembered. The ones RayEtch acts on are listed in
 //! MECHANICS.md ("Impostazioni"); the others show a note when hovered.
 
 use serde::{Deserialize, Serialize};
@@ -77,7 +77,7 @@ pub struct Prefs {
     pub ignore_start_when_monitor_off: bool,
     pub start_button_no_focus: bool,
     pub save_job_log: bool,
-    /// true: BeamForge's own Load/Save windows; false: the system's
+    /// true: RayEtch's own Load/Save windows; false: the system's
     pub internal_file_dialogs: bool,
     pub default_font: String,
     pub default_text_height: f64,
@@ -162,7 +162,7 @@ impl Default for Prefs {
             load_default_layer_settings: true,
             select_after_drawing: false,
             show_page_tabs: true,
-            // BeamForge sends nothing anywhere: these two stay off
+            // RayEtch sends nothing anywhere: these two stay off
             send_usage_data: false,
             ask_crash_reports: false,
             use_system_clipboard: true,

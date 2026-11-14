@@ -1,7 +1,7 @@
 [package]
-name = "beamforge"
+name = "rayetch"
 version = "1.0.0-beta.1"
-description = "BeamForge - free laser design and control software"
+description = "RayEtch - free laser design and control software"
 license = "Apache-2.0"
 edition = "2024"
 

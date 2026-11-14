@@ -3,7 +3,7 @@
 //! The person's case: .ai files kept in iCloud Drive with "Optimise Mac Storage" are only
 //! placeholders on the Mac (flag SF_DATALESS). Reading one makes macOS download it first, and the
 //! read waits until then: minutes on a slow line, for ever when offline. Done on the window's own
-//! thread, that looked like BeamForge had stopped responding.
+//! thread, that looked like RayEtch had stopped responding.
 
 use crate::formats::Imported;
 use crate::i18n::{tr, trf};

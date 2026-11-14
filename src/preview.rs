@@ -4,7 +4,7 @@
 //! Rules: UpdateCutStats 0x100da2364, on_hsPlaySpeed_valueChanged 0x100da3878, timerEvent
 //! 0x100da372c, _updateLegend 0x100da15a4. See MECHANICS.md, "Anteprima".
 
-use crate::app::BeamForge;
+use crate::app::RayEtch;
 use crate::gcode::{Job, MoveKind};
 use crate::i18n::{tr, trf};
 use crate::model::*;
@@ -181,7 +181,7 @@ fn legend_row(ui: &mut egui::Ui, fills: &[Color32], text: &str) {
     });
 }
 
-pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn window(app: &mut RayEtch, ctx: &egui::Context) {
     let Some(mut pv) = app.preview.take() else { return };
     // only the burn widths are needed while drawing; the document itself (with its pictures) is
     // no longer copied on every frame

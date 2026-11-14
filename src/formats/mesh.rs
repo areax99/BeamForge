@@ -1,7 +1,7 @@
 //! 3D models (STL, OBJ, OFF, PLY, AMF, 3MF — the original's STL/OBJ/OFF/PLY/AMF/ThreeMF
 //! translators) and their depth map. The original opens these in Model3DImportWizard, which can
 //! insert the model or convert it into a depth-map picture for engraving
-//! (BuildDepthMapResult 0x1008e76f4 → DepthMapConvert::GetDepthMapShape). BeamForge makes the
+//! (BuildDepthMapResult 0x1008e76f4 → DepthMapConvert::GetDepthMapShape). RayEtch makes the
 //! depth map straight away: seen from above, the highest point is white and the lowest black.
 
 use crate::i18n::{tr, trf};

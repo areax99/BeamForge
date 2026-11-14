@@ -1,7 +1,7 @@
 //! The Impostazioni window, with the original's six tabs (the person's pictures 3-8). It edits a
 //! copy of the settings; OK keeps it, Cancel drops it.
 
-use crate::app::BeamForge;
+use crate::app::RayEtch;
 use crate::i18n::{dv, tr};
 use crate::panels::switch;
 use crate::prefs::{AppTheme, DxfUnit, GridContrast, Prefs};
@@ -11,7 +11,7 @@ use eframe::egui::{self, vec2};
 /// The window's fixed size, so it doesn't change between tabs (the person's rule).
 const SIZE: egui::Vec2 = egui::Vec2::new(940.0, 600.0);
 const TABS: [&str; 6] = ["Impostazioni editor", "Unità e Griglie", "Schermo", "Importa/Esporta", "Fotocamera", "Estensioni"];
-/// Shown on the options that need a whole feature BeamForge doesn't have yet (pages, rotary,
+/// Shown on the options that need a whole feature RayEtch doesn't have yet (pages, rotary,
 /// inches, its own Load/Save windows, SHX fonts, DXF export, printing, camera, API): the person
 /// chose to add those later.
 fn not_yet() -> &'static str {
@@ -60,7 +60,7 @@ fn editor_tab(ui: &mut egui::Ui, p: &mut Prefs, updates: &mut bool) {
             ui.horizontal(|ui| {
                 ui.label(tr("Intervallo di salvataggio automatico (minuti):"));
                 ui.add(egui::DragValue::new(&mut p.autosave_minutes).range(0..=120))
-                    .on_hover_text(tr("Ogni tanti minuti, se ci sono modifiche, BeamForge ne salva una copia di sicurezza (0 = mai)"));
+                    .on_hover_text(tr("Ogni tanti minuti, se ci sono modifiche, RayEtch ne salva una copia di sicurezza (0 = mai)"));
             });
             opt(ui, &mut p.beginner_mode, tr("Modalità principiante (interfaccia più semplice)"), true);
             opt(ui, &mut p.ignore_out_of_bounds, tr("Ignora le forme fuori limite se possibile"), true);
@@ -73,12 +73,12 @@ fn editor_tab(ui: &mut egui::Ui, p: &mut Prefs, updates: &mut bool) {
             opt(ui, &mut p.load_default_layer_settings, tr("Carica le impostazioni di livello predefinite su nuovo o riavvia"), true);
             opt(ui, &mut p.select_after_drawing, tr("Passa alla modalità Seleziona dopo aver disegnato una forma"), true);
             opt(ui, &mut p.show_page_tabs, tr("Mostra le linguette di selezione delle pagine"), false);
-            // BeamForge sends nothing: shown off and greyed
+            // RayEtch sends nothing: shown off and greyed
             ui.add_enabled_ui(false, |ui| {
                 switch(ui, &mut p.send_usage_data, tr("Invia dati di utilizzo anonimi"))
-                    .on_disabled_hover_text(tr("BeamForge non invia dati a nessuno"));
+                    .on_disabled_hover_text(tr("RayEtch non invia dati a nessuno"));
                 switch(ui, &mut p.ask_crash_reports, tr("Chiedi di segnalare i crash"))
-                    .on_disabled_hover_text(tr("BeamForge non invia dati a nessuno"));
+                    .on_disabled_hover_text(tr("RayEtch non invia dati a nessuno"));
             });
             let ui = &mut c[1];
             opt(ui, updates, tr("Controlla automaticamente gli aggiornamenti"), true);
@@ -226,7 +226,7 @@ fn screen_tab(ui: &mut egui::Ui, p: &mut Prefs, lang: &mut Option<Option<crate::
                 });
             });
         });
-        // BeamForge's own: the interface language
+        // RayEtch's own: the interface language
         ui.horizontal(|ui| {
             ui.label(tr("Lingua"));
             let current = crate::i18n::load_choice();
@@ -308,7 +308,7 @@ fn import_tab(ui: &mut egui::Ui, p: &mut Prefs) {
 }
 
 fn camera_tab(ui: &mut egui::Ui, p: &mut Prefs) {
-    ui.label(egui::RichText::new(tr("BeamForge non gestisce ancora le fotocamere: queste impostazioni vengono solo ricordate.")).color(theme::p().text_dim));
+    ui.label(egui::RichText::new(tr("RayEtch non gestisce ancora le fotocamere: queste impostazioni vengono solo ricordate.")).color(theme::p().text_dim));
     ui.add_space(6.0);
     ui.columns(2, |c| {
         group(&mut c[0], tr("Sistema di acquisizione della fotocamera"), |ui| {
@@ -351,12 +351,12 @@ fn extensions_tab(ui: &mut egui::Ui, p: &mut Prefs) {
     ui.add_enabled(false, egui::Button::new(tr("Visualizza documentazione API"))).on_disabled_hover_text(not_yet());
     ui.add_space(200.0);
     ui.vertical_centered(|ui| {
-        ui.label(egui::RichText::new(tr("BeamForge non ha ancora un'interfaccia API: questa impostazione viene solo ricordata.")).strong());
+        ui.label(egui::RichText::new(tr("RayEtch non ha ancora un'interfaccia API: questa impostazione viene solo ricordata.")).strong());
     });
 }
 
 /// "Modifica testo": opened by a double click on a text when the setting asks for it.
-pub fn text_edit_window(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn text_edit_window(app: &mut RayEtch, ctx: &egui::Context) {
     let Some((id, mut text)) = app.text_edit.take() else { return };
     let mut open = true;
     let mut done: Option<bool> = None;
@@ -392,7 +392,7 @@ pub fn text_edit_window(app: &mut BeamForge, ctx: &egui::Context) {
     }
 }
 
-pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn window(app: &mut RayEtch, ctx: &egui::Context) {
     if !app.show_settings {
         app.prefs_draft = None;
         return;

@@ -361,7 +361,7 @@ impl OriginCorner {
 
 impl Device {
     /// Whether the controller has a separate minimum power (CutSettingEdit::UpdatePowerControls
-    /// 0x100b86830 asks the protocol; GRBL has only S, so no). BeamForge drives GRBL devices
+    /// 0x100b86830 asks the protocol; GRBL has only S, so no). RayEtch drives GRBL devices
     /// only, so the field is greyed out as in the original.
     pub fn supports_min_power(&self) -> bool {
         false

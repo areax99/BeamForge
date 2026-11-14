@@ -1,23 +1,23 @@
-//! Help > Updates: asks GitHub which BeamForge releases exist and offers the newest one.
+//! Help > Updates: asks GitHub which RayEtch releases exist and offers the newest one.
 //!
-//! Releases live at github.com/areax99/BeamForge/releases. Each one is tagged `v<version>`
+//! Releases live at github.com/areax99/RayEtch/releases. Each one is tagged `v<version>`
 //! (for example `v1.0.0-beta.2`), marked "pre-release" while it is a beta, and carries the
-//! archives made by build-release.local.py. BeamForge compares the tag with its own version
+//! archives made by build-release.local.py. RayEtch compares the tag with its own version
 //! (Cargo.toml) and, when a newer one exists, shows its notes and offers "Download and install":
 //! the archive for this computer is downloaded, unpacked, swapped with the running program and
-//! started when BeamForge restarts. The check runs `curl` (present on macOS, Linux and
+//! started when RayEtch restarts. The check runs `curl` (present on macOS, Linux and
 //! Windows 10+) in a background thread, so the window never waits for the network.
 //!
 //! The original checks once a day, 2 s after start (MainWindow::runUpdateCheck 0x10068122c,
 //! day of year compared with the stored one, then "start_auto_update_check" after 2 000 000 000 ns);
-//! BeamForge does the same, quietly unless something newer is found.
+//! RayEtch does the same, quietly unless something newer is found.
 
 use eframe::egui;
 use std::sync::{Arc, Mutex};
 
-pub const REPO: &str = "areax99/BeamForge";
-pub const RELEASES_PAGE: &str = "https://github.com/areax99/BeamForge/releases";
-const API: &str = "https://api.github.com/repos/areax99/BeamForge/releases?per_page=20";
+pub const REPO: &str = "areax99/RayEtch";
+pub const RELEASES_PAGE: &str = "https://github.com/areax99/RayEtch/releases";
+const API: &str = "https://api.github.com/repos/areax99/RayEtch/releases?per_page=20";
 /// The automatic check waits this long after start (runUpdateCheck: 2 s).
 pub const AUTO_CHECK_DELAY_S: f64 = 2.0;
 /// Include betas (pre-releases) when looking for something newer: for now every release is a beta.
@@ -53,7 +53,7 @@ pub enum State {
     Downloading { release: Release, file: std::path::PathBuf, total: u64 },
     /// Unpacking and putting the new program in place.
     Installing(Release),
-    /// Done: the new program is in place and starts when BeamForge restarts.
+    /// Done: the new program is in place and starts when RayEtch restarts.
     Installed { version: String, relaunch: std::path::PathBuf },
     /// Downloading or installing went wrong; the old program is untouched (or put back).
     InstallFailed { release: Release, error: String },
@@ -102,7 +102,7 @@ impl Checker {
     /// Download the release's archive and put it in place of the running program (install_archive).
     pub fn install(&mut self, ctx: &egui::Context, release: Release) {
         let Some((name, url)) = release.asset.clone() else { return };
-        let dir = std::env::temp_dir().join(format!("beamforge-update-{}", release.version));
+        let dir = std::env::temp_dir().join(format!("rayetch-update-{}", release.version));
         let _ = std::fs::remove_dir_all(&dir);
         if let Err(e) = std::fs::create_dir_all(&dir) {
             *self.state.lock().unwrap() = State::InstallFailed { release, error: e.to_string() };
@@ -128,7 +128,7 @@ impl Checker {
 }
 
 /// Every copy can install an update now: a protected folder asks for the administrator password,
-/// and a development build installs the package where BeamForge normally lives (standard_install).
+/// and a development build installs the package where RayEtch normally lives (standard_install).
 pub fn can_self_install() -> bool {
     install_target().is_ok()
 }
@@ -152,8 +152,8 @@ pub struct Target {
 /// A development build (run from cargo's target folder) isn't replaced: the update is installed
 /// in the standard place instead, and that copy starts on restart.
 fn install_target() -> Result<Target, String> {
-    // BEAMFORGE_UPDATE_TARGET (for testing): replace this copy instead of the running one
-    let path = if let Some(t) = std::env::var_os("BEAMFORGE_UPDATE_TARGET") {
+    // RAYETCH_UPDATE_TARGET (for testing): replace this copy instead of the running one
+    let path = if let Some(t) = std::env::var_os("RAYETCH_UPDATE_TARGET") {
         std::path::PathBuf::from(t)
     } else {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -170,25 +170,25 @@ fn install_target() -> Result<Target, String> {
     Ok(Target { admin: !writable(path.parent().ok_or("no parent folder")?), path })
 }
 
-/// The usual home of an installed BeamForge: /Applications on a Mac (~/Applications when the
+/// The usual home of an installed RayEtch: /Applications on a Mac (~/Applications when the
 /// person can't write there and has no admin rights is not tried: the password prompt covers it),
-/// %LOCALAPPDATA%\Programs\BeamForge on Windows, ~/.local/bin on Linux.
+/// %LOCALAPPDATA%\Programs\RayEtch on Windows, ~/.local/bin on Linux.
 fn standard_install() -> Result<std::path::PathBuf, String> {
     if cfg!(target_os = "macos") {
-        Ok("/Applications/BeamForge.app".into())
+        Ok("/Applications/RayEtch.app".into())
     } else if cfg!(windows) {
         let base = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA not set")?;
-        Ok(std::path::PathBuf::from(base).join("Programs").join("BeamForge").join("beamforge.exe"))
+        Ok(std::path::PathBuf::from(base).join("Programs").join("RayEtch").join("rayetch.exe"))
     } else {
         let home = std::env::var_os("HOME").ok_or("HOME not set")?;
-        Ok(std::path::PathBuf::from(home).join(".local").join("bin").join("beamforge"))
+        Ok(std::path::PathBuf::from(home).join(".local").join("bin").join("rayetch"))
     }
 }
 
 /// Whether this folder (or, when missing, the nearest folder above it) takes new files.
 fn writable(dir: &std::path::Path) -> bool {
     let Some(existing) = dir.ancestors().find(|p| p.exists()) else { return false };
-    let probe = existing.join(format!(".beamforge-write-test-{}", std::process::id()));
+    let probe = existing.join(format!(".rayetch-write-test-{}", std::process::id()));
     let ok = std::fs::write(&probe, b"").is_ok();
     let _ = std::fs::remove_file(probe);
     ok
@@ -232,8 +232,10 @@ fn install_archive_to(file: &std::path::Path, dir: &std::path::Path, target: Tar
     if !out.status.success() {
         return Err(format!("unpack: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
-    let want = if cfg!(target_os = "macos") { "BeamForge.app" } else if cfg!(windows) { "beamforge.exe" } else { "beamforge" };
-    let new = find(&unpacked, want, 3).ok_or_else(|| format!("{want} not found in the archive"))?;
+    let want = if cfg!(target_os = "macos") { "RayEtch.app" } else if cfg!(windows) { "rayetch.exe" } else { "rayetch" };
+    // an archive made before the rename still holds the program under its old name
+    let old_name = if cfg!(target_os = "macos") { "BeamForge.app" } else if cfg!(windows) { "beamforge.exe" } else { "beamforge" };
+    let new = find(&unpacked, want, 3).or_else(|| find(&unpacked, old_name, 3)).ok_or_else(|| format!("{want} not found in the archive"))?;
     let Target { path: target, admin } = target;
     if admin {
         swap_as_admin(&new, &target)?;
@@ -386,7 +388,7 @@ pub(crate) const DOWNLOAD_TIMEOUT_S: &str = "600";
 fn fetch() -> Result<Vec<Release>, String> {
     let mut cmd = std::process::Command::new("curl");
     cmd.args(["-sSL", "--max-time", "15", "-H", "Accept: application/vnd.github+json", "-H"])
-        .arg(format!("User-Agent: BeamForge/{}", current()))
+        .arg(format!("User-Agent: RayEtch/{}", current()))
         .arg(API);
     no_console(&mut cmd);
     let out = cmd.output().map_err(|e| e.to_string())?;
@@ -439,7 +441,7 @@ fn fetch() -> Result<Vec<Release>, String> {
 }
 
 /// The archive named for this system and processor (names from build-release.local.py:
-/// BeamForge-<version>-<os>-<arch>…); on a Mac the Universal one first.
+/// RayEtch-<version>-<os>-<arch>…); on a Mac the Universal one first.
 fn asset_for_this_computer(assets: &[(String, String)]) -> Option<(String, String)> {
     let os = if cfg!(target_os = "macos") { "-macos-" } else if cfg!(windows) { "-windows-" } else { "-linux-" };
     let arch = if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" };
@@ -524,9 +526,9 @@ mod tests {
     #[test]
     fn picks_archive() {
         let a = vec![
-            ("BeamForge-1.0.0-beta.2-macos-universal.zip".to_string(), "u".to_string()),
-            ("BeamForge-1.0.0-beta.2-windows-x86_64.zip".to_string(), "w".to_string()),
-            ("BeamForge-1.0.0-beta.2-linux-x86_64-gnu.tar.gz".to_string(), "l".to_string()),
+            ("RayEtch-1.0.0-beta.2-macos-universal.zip".to_string(), "u".to_string()),
+            ("RayEtch-1.0.0-beta.2-windows-x86_64.zip".to_string(), "w".to_string()),
+            ("RayEtch-1.0.0-beta.2-linux-x86_64-gnu.tar.gz".to_string(), "l".to_string()),
         ];
         assert!(asset_for_this_computer(&a).is_some() || cfg!(target_arch = "aarch64"));
     }
@@ -538,23 +540,23 @@ mod install_tests {
     #[test]
     fn swaps_bundle() {
         let base = std::env::temp_dir().join(format!("bf-install-test-{}", std::process::id()));
-        let installed = base.join("Applications/BeamForge.app");
+        let installed = base.join("Applications/RayEtch.app");
         std::fs::create_dir_all(installed.join("Contents")).unwrap();
         std::fs::write(installed.join("Contents/version"), "old").unwrap();
-        let new_src = base.join("build/BeamForge.app");
+        let new_src = base.join("build/RayEtch.app");
         std::fs::create_dir_all(new_src.join("Contents")).unwrap();
         std::fs::write(new_src.join("Contents/version"), "new").unwrap();
         let work = base.join("work");
         std::fs::create_dir_all(&work).unwrap();
-        let zip = work.join("BeamForge-9.9.9-beta.1-macos-universal.zip");
+        let zip = work.join("RayEtch-9.9.9-beta.1-macos-universal.zip");
         assert!(std::process::Command::new("ditto").args(["-c", "-k", "--keepParent"]).arg(&new_src).arg(&zip).status().unwrap().success());
         // SAFETY: tests in this module run alone; the variable only points the installer at the fake copy
-        unsafe { std::env::set_var("BEAMFORGE_UPDATE_TARGET", &installed) };
+        unsafe { std::env::set_var("RAYETCH_UPDATE_TARGET", &installed) };
         let r = super::install_archive(&zip, &work);
-        unsafe { std::env::remove_var("BEAMFORGE_UPDATE_TARGET") };
+        unsafe { std::env::remove_var("RAYETCH_UPDATE_TARGET") };
         assert_eq!(r.unwrap(), installed);
         assert_eq!(std::fs::read_to_string(installed.join("Contents/version")).unwrap(), "new");
-        assert!(!base.join("Applications/.BeamForge.app.old").exists());
+        assert!(!base.join("Applications/.RayEtch.app.old").exists());
         let _ = std::fs::remove_dir_all(&base);
     }
 }
@@ -565,14 +567,14 @@ mod first_install_tests {
     #[test]
     fn places_bundle_where_none_was() {
         let base = std::env::temp_dir().join(format!("bf-first-install-{}", std::process::id()));
-        let new_src = base.join("build/BeamForge.app");
+        let new_src = base.join("build/RayEtch.app");
         std::fs::create_dir_all(new_src.join("Contents")).unwrap();
         std::fs::write(new_src.join("Contents/version"), "new").unwrap();
         let work = base.join("work");
         std::fs::create_dir_all(&work).unwrap();
-        let zip = work.join("BeamForge-9.9.9-beta.1-macos-universal.zip");
+        let zip = work.join("RayEtch-9.9.9-beta.1-macos-universal.zip");
         assert!(std::process::Command::new("ditto").args(["-c", "-k", "--keepParent"]).arg(&new_src).arg(&zip).status().unwrap().success());
-        let target = base.join("Apps/BeamForge.app");
+        let target = base.join("Apps/RayEtch.app");
         let t = super::install_target_at(&target);
         assert!(!t.admin);
         let r = super::install_archive_to(&zip, &work, t);

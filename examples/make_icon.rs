@@ -1,4 +1,4 @@
-//! Draws BeamForge's own icon (no artwork from the original): a dark rounded square, a laser beam
+//! Draws RayEtch's own icon (no artwork from the original): a dark rounded square, a laser beam
 //! and the orange diamond used in the menu. Writes assets/icon.png (1024×1024, for macOS and
 //! Linux) and assets/icon.ico (16…256 px, for Windows).
 //!

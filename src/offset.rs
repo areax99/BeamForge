@@ -25,7 +25,7 @@ pub const ARC_TOLERANCE_UNITS: f64 = 2.0;
 pub const ARC_TOLERANCE_SMALL_UNITS: f64 = 0.8;
 pub const SMALL_DISTANCE_MM: f64 = 0.2;
 /// "Ottimizza / Semplifica risultati": the original arc-fits the results with a preference value
-/// × 0.25 (PathShape::ArcFit in Compute); BeamForge drops points within this distance of the
+/// × 0.25 (PathShape::ArcFit in Compute); RayEtch drops points within this distance of the
 /// line instead (estimated tolerance).
 pub const SIMPLIFY_TOLERANCE_MM: f64 = 0.01;
 

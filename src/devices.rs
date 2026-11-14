@@ -5,7 +5,7 @@
 //! ScanForDevices (0x1008392dc) → ConnectGCodeDevice (0x10083b59c) → ParseGRBLSettings
 //! (0x10083ce78) of the original; the numbers are in MECHANICS.md ("Finding the laser").
 
-use crate::app::BeamForge;
+use crate::app::RayEtch;
 use crate::i18n::{tr, trf};
 use crate::model::{Device, OriginCorner};
 use crate::theme::{self, ACCENT};
@@ -60,7 +60,7 @@ pub const SETTINGS_WAIT_MS: u64 = 2000;
 /// Pause before each query, ms (`mov w2,#0xc8`, 0x10083e15c).
 pub const SETTINGS_PAUSE_MS: u64 = 200;
 
-/// Controller types offered by "Crea manualmente" (BeamForge speaks GRBL G-code).
+/// Controller types offered by "Crea manualmente" (RayEtch speaks GRBL G-code).
 pub const CONTROLLERS: &[&str] = &["GRBL", "GRBL-M3", "grblHAL"];
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -361,7 +361,7 @@ impl Finder {
     }
 }
 
-impl BeamForge {
+impl RayEtch {
     pub fn open_devices(&mut self) {
         let list = self.device_list.clone();
         let selected = self.device_sel.filter(|i| *i < list.devices.len()).or(list.default);
@@ -404,7 +404,7 @@ fn subtitle(d: &Device) -> String {
 }
 
 /// Draw the Periferiche window and its helpers (finder and editor).
-pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn window(app: &mut RayEtch, ctx: &egui::Context) {
     let Some(mut st) = app.devices_ui.take() else { return };
     let mut keep = true;
     let mut accept = false;
@@ -470,7 +470,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
                     st.editor = Some((None, d));
                 }
                 if ui.add(egui::Button::new(tr("Importa")).min_size(bw)).clicked() {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("BeamForge device", &["bfdevice", "json"]).pick_file() {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("RayEtch device", &["bfdevice", "json"]).pick_file() {
                         match std::fs::read_to_string(&p).ok().and_then(|s| serde_json::from_str::<Device>(&s).ok()) {
                             Some(d) => {
                                 st.list.devices.push(d);
@@ -533,7 +533,7 @@ pub fn window(app: &mut BeamForge, ctx: &egui::Context) {
         let mut again = false;
         let mut open = true;
         theme::centered(ctx, "finder", egui::Window::new(tr("Trova il mio laser")).open(&mut open).resizable(false).collapsible(false).fixed_size(vec2(560.0, 360.0))).show(ctx, |ui| {
-            ui.label(tr("Collega il laser con il cavo USB e accendilo. BeamForge prova ogni porta USB e ascolta la risposta del controller."));
+            ui.label(tr("Collega il laser con il cavo USB e accendilo. RayEtch prova ogni porta USB e ascolta la risposta del controller."));
             ui.add_space(6.0);
             ui.add(egui::ProgressBar::new(f.progress).text(f.step.clone()).fill(ACCENT).animate(!f.done));
             ui.add_space(6.0);

@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=BeamForge
+Name=RayEtch
 GenericName=Laser design and control
 Comment=Free laser design and control software
-Exec=beamforge %f
-Icon=beamforge
+Exec=rayetch %f
+Icon=rayetch
 Terminal=false
 Categories=Graphics;Engineering;
-MimeType=application/x-beamforge;image/svg+xml;
+MimeType=application/x-rayetch;image/svg+xml;

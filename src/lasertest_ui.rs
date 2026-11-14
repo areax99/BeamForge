@@ -1,6 +1,6 @@
 //! The Test intervallo and Generatore test del materiale windows, laid out like the original's.
 
-use crate::app::BeamForge;
+use crate::app::RayEtch;
 use crate::i18n::{dv, tr, trf};
 use crate::lasertest::*;
 use crate::model::*;
@@ -13,7 +13,7 @@ const PRESETS_FILE: &str = "material_test_presets.json";
 /// Names of the built-in presets, in the original's list order.
 const BUILTIN_PRESETS: [&str; 4] = ["CO2 - Cut test", "CO2 - Engrave test", "Diode - Cut test", "Diode - Engrave test"];
 
-impl BeamForge {
+impl RayEtch {
     /// MainWindow::on_actionInterval_Test_triggered 0x10068bbfc.
     pub fn open_interval_test(&mut self) {
         self.interval_test = Some(crate::i18n::load_json(INTERVAL_FILE).unwrap_or_default());
@@ -36,7 +36,7 @@ fn big(ui: &mut egui::Ui, text: &str, w: f32, h: f32) -> bool {
 }
 
 /// Both test windows. Their buttons work on the test's own document, never on the project.
-pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
+pub fn windows(app: &mut RayEtch, ctx: &egui::Context) {
     interval_window(app, ctx);
     material_window(app, ctx);
 }
@@ -51,7 +51,7 @@ enum Act {
     Save,
 }
 
-fn run(app: &mut BeamForge, doc: Document, act: Act, file: &str) {
+fn run(app: &mut RayEtch, doc: Document, act: Act, file: &str) {
     match act {
         Act::Preview => app.preview_test(doc),
         Act::Frame => app.frame_test(&doc),
@@ -62,7 +62,7 @@ fn run(app: &mut BeamForge, doc: Document, act: Act, file: &str) {
     }
 }
 
-fn interval_window(app: &mut BeamForge, ctx: &egui::Context) {
+fn interval_window(app: &mut RayEtch, ctx: &egui::Context) {
     let Some(mut t) = app.interval_test.clone() else { return };
     let mut open = true;
     let mut act: Option<Act> = None;
@@ -241,7 +241,7 @@ fn layer_button(ui: &mut egui::Ui, layer: usize, text: &str) -> bool {
     ui.add_sized(vec2(270.0, 30.0), egui::Button::new(job)).clicked()
 }
 
-fn material_window(app: &mut BeamForge, ctx: &egui::Context) {
+fn material_window(app: &mut RayEtch, ctx: &egui::Context) {
     let Some(mut t) = app.material_test.clone() else { return };
     let mut open = true;
     let mut act: Option<Act> = None;

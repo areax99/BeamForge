@@ -1,7 +1,7 @@
-//! Gives saved projects (.beamforge files) their own icon in Windows Explorer.
+//! Gives saved projects (.rayetch files) their own icon in Windows Explorer.
 //! macOS gets it from the app bundle (scripts/macos-app.sh) and Linux from its file type
 //! (scripts/install-linux.sh); on Windows the program registers it for the current user
-//! when it starts, pointing at the icon built into beamforge.exe (resource 2, see build.rs).
+//! when it starts, pointing at the icon built into rayetch.exe (resource 2, see build.rs).
 
 #[cfg(windows)]
 pub fn register() {
@@ -9,12 +9,12 @@ pub fn register() {
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let Ok(exe) = std::env::current_exe() else { return };
     let exe = exe.display().to_string();
-    let class = r"HKCU\Software\Classes\BeamForge.Project";
+    let class = r"HKCU\Software\Classes\RayEtch.Project";
     let icon = format!("\"{exe}\",-2");
     let open = format!("\"{exe}\" \"%1\"");
     let entries: [(String, &str); 4] = [
-        (r"HKCU\Software\Classes\.beamforge".to_string(), "BeamForge.Project"),
-        (class.to_string(), "BeamForge project"),
+        (r"HKCU\Software\Classes\.rayetch".to_string(), "RayEtch.Project"),
+        (class.to_string(), "RayEtch project"),
         (format!(r"{class}\DefaultIcon"), icon.as_str()),
         (format!(r"{class}\shell\open\command"), open.as_str()),
     ];
@@ -29,21 +29,21 @@ pub fn register() {
 #[cfg(not(windows))]
 pub fn register() {}
 
-/// Whether a file is a BeamForge project (opened) rather than a drawing (imported).
+/// Whether a file is a RayEtch project (opened) rather than a drawing (imported).
 /// Like the original's OpenProject (0x100c4c9e8), the extension is compared ignoring case.
 pub fn is_project(p: &std::path::Path) -> bool {
-    p.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("beamforge"))
+    p.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("rayetch") || e.eq_ignore_ascii_case("beamforge"))
 }
 
 /// Save without risking the old file (MainWindow::SaveProject 0x10098548c): the project is
 /// written to a temporary file "<name>_XXXXXX.<ext>" in the same folder, and only when that
-/// worked does it replace the old one (the original copies it over; BeamForge renames, which
+/// worked does it replace the old one (the original copies it over; RayEtch renames, which
 /// swaps it in one step). A failed write leaves the old project untouched.
 pub fn safe_write(p: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let dir = p.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("project");
-    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("beamforge");
+    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("rayetch");
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
     let tmp = dir.join(format!("{stem}_{:06}.{ext}", (nanos ^ std::process::id()) % 1_000_000));
     let write = || -> std::io::Result<()> {
@@ -67,7 +67,7 @@ pub fn safe_write(p: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
 const DOCUMENT_PNG: &[u8] = include_bytes!("../assets/document.png");
 
 /// Give a saved project its document icon in Finder. The app bundle declares the icon for
-/// .beamforge files, but when BeamForge runs without being installed as BeamForge.app Finder
+/// .rayetch files, but when RayEtch runs without being installed as RayEtch.app Finder
 /// doesn't know that type and shows a plain text page; so the icon is also stored on the file
 /// itself (NSWorkspace setIcon:forFile:options:). Windows and Linux use their file-type
 /// registration instead.
@@ -90,7 +90,7 @@ pub fn mark_saved(_p: &std::path::Path) {}
 mod tests {
     #[test]
     fn saved_project_gets_icon() {
-        let p = std::env::temp_dir().join(format!("bf_icon_test_{}.beamforge", std::process::id()));
+        let p = std::env::temp_dir().join(format!("bf_icon_test_{}.rayetch", std::process::id()));
         super::safe_write(&p, b"{}").unwrap();
         // saving again keeps the content and leaves no temporary file behind
         super::safe_write(&p, b"{\"a\":1}").unwrap();

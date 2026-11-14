@@ -86,6 +86,12 @@ pub struct ScreenshotState {
 
 pub use crate::preview::Preview;
 
+/// "Dimensione del font" (Impostazioni > Schermo): text scale for each slider step.
+pub const FONT_SCALES: [f32; 5] = [1.0, 1.1, 1.2, 1.35, 1.5];
+/// egui's own fade time, back when "Riduci il movimento" is off.
+pub const DEFAULT_ANIMATION_S: f32 = 1.0 / 12.0;
+/// Smallest screen (points) the main window fits on comfortably (estimated from its panels).
+pub const MIN_SCREEN: [f32; 2] = [1280.0, 760.0];
 /// Wait before trying the next port after one gave no answer (estimated).
 pub const AUTOCONNECT_NEXT: Duration = Duration::from_millis(300);
 /// Wait after a full round of ports found no laser (estimated).
@@ -155,6 +161,22 @@ pub struct BeamForge {
     pub line_pts: Vec<P2>,
     pub cursor_world: Option<P2>,
     pub clipboard: Vec<Shape>,
+    /// text waiting to go on the system clipboard (Usa appunti di sistema)
+    pub clip_out: Option<String>,
+    /// whether the window is in front, for "Ignora il pulsante Avvio..."
+    pub window_focused: bool,
+    /// the screen-size check ran (Esegui controlli delle dimensioni dello schermo)
+    pub screen_checked: bool,
+    /// the bottom bar's Sposta / Dimensione / Ruota switches: what the mouse may do
+    pub edit_switches: [bool; 3],
+    /// the job checklist being ticked before a start (device: lista di controllo lavori)
+    pub checklist: Option<Vec<bool>>,
+    /// the device window's open tab, picked scan-offset row and checklist being edited
+    pub device_tab: usize,
+    pub scan_row: Option<usize>,
+    pub checklist_text: Option<String>,
+    /// the Modifica testo window: the text shape and the words being edited
+    pub text_edit: Option<(u64, String)>,
     pub current_layer: usize,
     pub selected_row: Option<usize>,
     /// The canvas selection the layer list last followed: when it changes, the row of the last
@@ -282,7 +304,16 @@ impl BeamForge {
         // the general settings; checks start from the defaults so a run is always the same
         app.prefs = if app.screenshot.is_some() { crate::prefs::Prefs::default() } else { crate::prefs::Prefs::load() };
         app.prefs.dark_background = !crate::theme::p().light;
+        crate::prefs::set_current(&app.prefs);
         app.apply_text_defaults();
+        app.apply_display_prefs(&cc.egui_ctx);
+        app.apply_job_defaults();
+        if let Some(s) = app.prefs.saved_switches.filter(|_| app.prefs.save_move_rotate_scale_switches) {
+            app.edit_switches = s;
+        }
+        if app.screenshot.is_none() {
+            app.apply_layer_defaults();
+        }
         crate::update::clean_leftovers();
         app.auto_update_pending = app.screenshot.is_none()
             && crate::i18n::load_json::<bool>("update_auto.json").unwrap_or(true)
@@ -301,6 +332,7 @@ impl BeamForge {
             // settings,tab3: open Impostazioni on its fourth tab (for testing)
             if let Some(t) = v.split(',').find_map(|w| w.strip_prefix("tab")).and_then(|n| n.parse::<usize>().ok()) {
                 app.settings_tab = t;
+                app.device_tab = t;
             }
             app.show_device = v.contains("device") && !v.contains("devices");
             app.show_about = v.contains("about");
@@ -466,13 +498,22 @@ impl BeamForge {
             line_pts: Vec::new(),
             cursor_world: None,
             clipboard: Vec::new(),
+            clip_out: None,
+            window_focused: true,
+            screen_checked: false,
+            edit_switches: [true; 3],
+            checklist: None,
+            device_tab: 0,
+            scan_row: None,
+            checklist_text: None,
+            text_edit: None,
             current_layer: 0,
             selected_row: None,
             row_follows: Vec::new(),
             right_tab: RightTab::Laser,
             reset_layout: false,
             right_width: crate::i18n::load_json::<f32>("panel_width.json").filter(|w| w.is_finite()).unwrap_or(crate::panels::RIGHT_WIDTH_DEFAULT).clamp(crate::panels::RIGHT_WIDTH_MIN, crate::panels::RIGHT_WIDTH_MAX),
-            job_opts: JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true },
+            job_opts: JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true, selection_origin: false },
             laser: Laser::new(cc.egui_ctx.clone()),
             connected: None,
             port_sel: String::new(),
@@ -686,6 +727,8 @@ impl BeamForge {
         self.checkpoint_now();
         self.doc = Document::default();
         self.doc.device = device;
+        self.apply_layer_defaults();
+        self.apply_job_defaults();
         self.path = None;
         self.dirty = false;
         self.selection.clear();
@@ -718,6 +761,7 @@ impl BeamForge {
                 }
                 self.checkpoint_now();
                 self.doc = d;
+                self.restore_job_state();
                 self.path = Some(p.clone());
                 self.dirty = false;
                 self.selection.clear();
@@ -736,6 +780,7 @@ impl BeamForge {
             self.path.clone()
         };
         let Some(p) = path else { return };
+        self.store_job_state();
         match serde_json::to_string(&self.doc).map_err(|e| e.to_string()).and_then(|s| crate::fileicon::safe_write(&p, s.as_bytes())) {
             Ok(()) => {
                 crate::fileicon::mark_saved(&p);
@@ -768,7 +813,9 @@ impl BeamForge {
     /// of the work area before the canvas has been drawn once.
     fn import_point(&self) -> P2 {
         let a = self.view.last_area;
-        if a.x > 1.0 && a.y > 1.0 && self.view.zoom > 0.0 {
+        // "Centra le forme importate nella finestra Modifica": the middle of what is on screen;
+        // off (the original's default), the middle of the work area
+        if self.prefs.center_imported && a.x > 1.0 && a.y > 1.0 && self.view.zoom > 0.0 {
             let z = self.view.zoom;
             [((a.x / 2.0 - self.view.offset.x) / z) as f64, ((self.view.offset.y - a.y / 2.0) / z) as f64]
         } else {
@@ -1020,6 +1067,23 @@ impl BeamForge {
     }
 
     pub fn start_job(&mut self) {
+        // "Ignora il pulsante Avvio se il monitor è spento / inattivo": a start that comes while
+        // the window isn't in front (screen asleep, another app active) is ignored
+        if self.prefs.ignore_start_when_monitor_off && !self.window_focused {
+            self.status = tr("Avvio ignorato: la finestra di BeamForge non è attiva").into();
+            return;
+        }
+        // "Abilita la lista di controllo lavori" (device settings): each item must be ticked first
+        let d = &self.doc.device;
+        if d.job_checklist_on && !d.job_checklist.is_empty() && self.checklist.is_none() {
+            self.checklist = Some(vec![false; d.job_checklist.len()]);
+            return;
+        }
+        self.start_job_now();
+    }
+
+    /// Start the job without the checklist (it has been ticked, or is off).
+    pub fn start_job_now(&mut self) {
         let (job, g) = self.job_gcode();
         self.send_job(job, g);
     }
@@ -1032,13 +1096,24 @@ impl BeamForge {
         if self.connected.is_none() {
             self.status = tr("Nessun laser trovato: collegalo con il cavo USB oppure usa Salva G-code.").into();
             self.right_tab = RightTab::Laser;
+            // "Riproduci il suono dell'errore se l'invio del file fallisce"
+            if self.prefs.error_sound_on_send_fail {
+                error_sound();
+            }
             return;
         }
         let lines: Vec<String> = g.lines().map(|l| l.to_string()).collect();
+        let n = lines.len();
         self.laser.send(Cmd::Lines(lines, true));
         self.job_progress = Some((0, 1));
         self.paused = false;
         self.status = tr("Lavoro avviato").into();
+        // "Salva registro lavori": one line per job in joblog.csv beside the settings
+        if self.prefs.save_job_log {
+            let secs = job.estimate_seconds_sim(&crate::gcode::Job::sim_for(&self.doc));
+            let name = self.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| tr("(senza nome)").to_string());
+            write_job_log(&name, secs, n);
+        }
     }
 
     pub fn run_gcode_file(&mut self) {
@@ -1190,11 +1265,14 @@ impl BeamForge {
                     self.status = tr("Lavoro terminato").into();
                     self.push_console(tr("Lavoro terminato").into());
                 }
-                Ev::Status { state, pos } => {
+                Ev::Status { state, pos, work } => {
                     if !self.autocon.verified {
                         self.mark_laser_found();
                     }
                     self.machine_state = state;
+                    // "Coordinate della macchina" (device settings): show the machine position;
+                    // off, the work position
+                    let pos = if self.doc.device.machine_coords { pos.or(work) } else { work.or(pos) };
                     if pos.is_some() {
                         self.head_pos = pos;
                     }
@@ -1239,6 +1317,13 @@ impl BeamForge {
 
     pub fn copy(&mut self) {
         self.clipboard = self.selected_shapes();
+        // "Usa appunti di sistema": the copy also goes on the system clipboard, so another
+        // BeamForge window can paste it
+        if self.prefs.use_system_clipboard && !self.clipboard.is_empty() {
+            if let Ok(json) = serde_json::to_string(&self.clipboard) {
+                self.clip_out = Some(format!("{CLIP_MARK}{json}"));
+            }
+        }
     }
 
     pub fn cut(&mut self) {
@@ -1672,6 +1757,8 @@ impl BeamForge {
         if p.default_font != old.default_font || p.default_text_height != old.default_text_height {
             self.apply_text_defaults();
         }
+        crate::prefs::set_current(&self.prefs);
+        self.apply_display_prefs(ctx);
         self.prefs.save();
     }
 
@@ -1681,6 +1768,93 @@ impl BeamForge {
             self.text_font = self.prefs.default_font.clone();
         }
         self.text_size = self.prefs.default_text_height;
+    }
+
+    /// The Schermo settings that change how egui draws: antialiasing, reduced motion and the
+    /// interface's text size.
+    pub fn apply_display_prefs(&mut self, ctx: &egui::Context) {
+        let p = &self.prefs;
+        // "Abilita antialiasing": soft edges on lines and shapes
+        ctx.tessellation_options_mut(|o| o.feathering = p.antialiasing);
+        // the text sizes egui started with, so the font size setting scales from them each time
+        static BASE: std::sync::OnceLock<Vec<(egui::TextStyle, f32)>> = std::sync::OnceLock::new();
+        let base = BASE.get_or_init(|| ctx.global_style().text_styles.iter().map(|(k, f)| (k.clone(), f.size)).collect());
+        let scale = FONT_SCALES[(p.font_size as usize).min(FONT_SCALES.len() - 1)];
+        let reduce = p.reduce_motion;
+        ctx.all_styles_mut(|st| {
+            // "Riduci il movimento": no fades and slides
+            st.animation_time = if reduce { 0.0 } else { DEFAULT_ANIMATION_S };
+            // "Dimensione del font"
+            for (k, size) in base {
+                if let Some(f) = st.text_styles.get_mut(k) {
+                    f.size = size * scale;
+                }
+            }
+        });
+    }
+
+    /// "Stato predefinito Taglia selezionato / Usa origine selezione" at start and on a new project.
+    pub fn apply_job_defaults(&mut self) {
+        self.job_opts.selected_only = self.prefs.default_cut_selected;
+        self.job_opts.selection_origin = self.prefs.default_use_selection_origin;
+    }
+
+    /// "Carica le impostazioni di livello predefinite su nuovo o riavvia": the layers a new
+    /// project starts with take the settings saved with "Rendi predefinito".
+    pub fn apply_layer_defaults(&mut self) {
+        if !self.prefs.load_default_layer_settings {
+            return;
+        }
+        for (&i, d) in &self.cut_defaults {
+            if let Some(l) = self.doc.layers.get_mut(i) {
+                let name = l.name.clone();
+                *l = d.clone();
+                l.name = name;
+            }
+        }
+    }
+
+    /// Keep the Laser panel's states in the project, as far as the settings ask.
+    fn store_job_state(&mut self) {
+        let p = &self.prefs;
+        let keep_sel = p.save_cut_selected_in_project;
+        let keep_origin = p.save_job_origin_in_project;
+        self.doc.job_state = crate::model::SavedJobState {
+            cut_selected: keep_sel.then_some(self.job_opts.selected_only),
+            selection_origin: keep_sel.then_some(self.job_opts.selection_origin),
+            start_from: keep_origin.then_some(self.job_opts.start_from),
+            job_origin: keep_origin.then_some(self.job_opts.job_origin),
+        };
+    }
+
+    /// Bring back the Laser panel's states a project was saved with.
+    fn restore_job_state(&mut self) {
+        let j = self.doc.job_state.clone();
+        if let Some(v) = j.cut_selected {
+            self.job_opts.selected_only = v;
+        }
+        if let Some(v) = j.selection_origin {
+            self.job_opts.selection_origin = v;
+        }
+        if let Some(v) = j.start_from {
+            self.job_opts.start_from = v;
+        }
+        if let Some(v) = j.job_origin {
+            self.job_opts.job_origin = v;
+        }
+    }
+
+    /// "Esegui controlli delle dimensioni dello schermo all'avvio": once, early on, a screen too
+    /// small for the main window gets a word in the status bar.
+    fn screen_size_check(&mut self, ctx: &egui::Context) {
+        if self.screen_checked || self.screenshot.is_some() {
+            return;
+        }
+        let Some(m) = ctx.input(|i| i.viewport().monitor_size) else { return };
+        self.screen_checked = true;
+        if self.prefs.screen_size_checks && (m.x < MIN_SCREEN[0] || m.y < MIN_SCREEN[1]) {
+            self.status = trf("Lo schermo è piccolo ({} × {}): alcuni pannelli potrebbero non entrare. Prova a ridurre la dimensione del font o delle icone nelle Impostazioni.", &[&format!("{:.0}", m.x), &format!("{:.0}", m.y)]);
+        }
     }
 
     /// "Intervallo di salvataggio automatico": every so many minutes, when there are unsaved
@@ -1722,6 +1896,10 @@ impl BeamForge {
         // the running original shows "No Machine" here when no device is set (measured, MECHANICS.md round 65)
         t.push_str(" - ");
         t.push_str(if self.doc.device.name.is_empty() { tr("Nessuna macchina") } else { &self.doc.device.name });
+        // "Nome Laser 1" (device settings), when given
+        if !self.doc.device.laser1_name.trim().is_empty() {
+            t.push_str(&format!(" ({})", self.doc.device.laser1_name.trim()));
+        }
         t.push_str(" - BeamForge");
         if t != self.title_cache {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(t.clone()));
@@ -1891,6 +2069,12 @@ impl eframe::App for BeamForge {
             }
         }
         self.autosave(&ctx);
+        self.screen_size_check(&ctx);
+        crate::panels::SPEED_MM_S.store(self.doc.device.speed_mm_s, std::sync::atomic::Ordering::Relaxed);
+        if let Some(t) = self.clip_out.take() {
+            ctx.copy_text(t);
+        }
+        self.window_focused = ctx.input(|i| i.viewport().focused.unwrap_or(true) && !i.viewport().minimized.unwrap_or(false));
         self.handle_screenshot(&ctx);
         if self.connected.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
@@ -1955,7 +2139,23 @@ impl BeamForge {
         if sc(cmd, Key::X) {
             self.cut();
         }
-        if sc(cmd, Key::V) {
+        // "Usa appunti di sistema": shapes copied in any BeamForge window come in from the system
+        // clipboard (a paste brings its text as an event)
+        let from_system: Option<Vec<Shape>> = if self.prefs.use_system_clipboard {
+            ctx.input(|i| {
+                i.events.iter().find_map(|e| match e {
+                    egui::Event::Paste(t) => t.strip_prefix(CLIP_MARK).and_then(|j| serde_json::from_str(j).ok()),
+                    _ => None,
+                })
+            })
+        } else {
+            None
+        };
+        let paste_key = sc(cmd, Key::V);
+        if let Some(shapes) = from_system {
+            self.clipboard = shapes;
+            self.paste(5.0);
+        } else if paste_key {
             self.paste(5.0);
         }
         if sc(cmd, Key::D) {
@@ -2026,4 +2226,47 @@ impl BeamForge {
         let (job, gcode) = self.job_gcode();
         self.preview = Some(Preview::new(job, gcode, None, &self.doc));
     }
+}
+
+/// Start of the text BeamForge puts on the system clipboard for copied shapes.
+pub const CLIP_MARK: &str = "BEAMFORGE-SHAPES\n";
+
+/// The system's error sound (Riproduci il suono dell'errore se l'invio del file fallisce).
+fn error_sound() {
+    if cfg!(target_os = "macos") {
+        let _ = std::process::Command::new("afplay").arg("/System/Library/Sounds/Basso.aiff").spawn();
+    } else if cfg!(windows) {
+        let _ = std::process::Command::new("powershell").args(["-NoProfile", "-Command", "[System.Media.SystemSounds]::Hand.Play()"]).spawn();
+    } else {
+        let _ = std::process::Command::new("canberra-gtk-play").args(["-i", "dialog-error"]).spawn();
+    }
+}
+
+/// Add one line to joblog.csv beside the settings: date and time (UTC), project, estimated
+/// time and G-code lines (Salva registro lavori).
+fn write_job_log(project: &str, secs: f64, lines: usize) {
+    use std::io::Write;
+    let Some(path) = crate::i18n::settings_file("joblog.csv") else { return };
+    let new = !path.exists();
+    let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) else { return };
+    if new {
+        let _ = writeln!(f, "data;progetto;tempo stimato (s);righe G-code");
+    }
+    let _ = writeln!(f, "{};{};{:.0};{}", utc_now(), project.replace(';', ","), secs, lines);
+}
+
+/// "AAAA-MM-GG hh:mm" in UTC, without a date library (days to civil date, H. Hinnant's method).
+fn utc_now() -> String {
+    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64;
+    let (days, rem) = (t.div_euclid(86_400), t.rem_euclid(86_400));
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02}", rem / 3600, (rem / 60) % 60)
 }

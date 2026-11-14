@@ -24,7 +24,9 @@ pub enum Ev {
     Sent(String),
     Progress(usize, usize),
     JobDone,
-    Status { state: String, pos: Option<[f64; 2]> },
+    /// `pos`: the machine position (MPos); `work`: the work position (WPos). GRBL reports one of
+    /// them; the other comes from the last work offset (WCO) it sent.
+    Status { state: String, pos: Option<[f64; 2]>, work: Option<[f64; 2]> },
 }
 
 pub struct Laser {
@@ -59,6 +61,8 @@ fn worker(rx: Receiver<Cmd>, tx: Sender<Ev>, ctx: eframe::egui::Context) {
     let mut in_job = false;
     let mut waiting_ok = false;
     let mut buf = String::new();
+    // the work coordinate offset GRBL last reported (WCO), to turn MPos into WPos and back
+    let mut wco: [f64; 2] = [0.0, 0.0];
     let mut last_status = Instant::now();
     let emit = |ev: Ev, tx: &Sender<Ev>| {
         let _ = tx.send(ev);
@@ -136,16 +140,25 @@ fn worker(rx: Receiver<Cmd>, tx: Sender<Ev>, ctx: eframe::egui::Context) {
                         let inner = line.trim_matches(|c| c == '<' || c == '>');
                         let mut parts = inner.split('|');
                         let state = parts.next().unwrap_or("").to_string();
-                        let mut pos = None;
+                        let (mut mpos, mut wpos) = (None, None);
+                        let xy = |v: &str| -> Option<[f64; 2]> {
+                            let n: Vec<f64> = v.split(',').filter_map(|x| x.parse().ok()).collect();
+                            (n.len() >= 2).then(|| [n[0], n[1]])
+                        };
                         for part in parts {
-                            if let Some(v) = part.strip_prefix("MPos:").or_else(|| part.strip_prefix("WPos:")) {
-                                let n: Vec<f64> = v.split(',').filter_map(|x| x.parse().ok()).collect();
-                                if n.len() >= 2 {
-                                    pos = Some([n[0], n[1]]);
+                            if let Some(v) = part.strip_prefix("MPos:") {
+                                mpos = xy(v);
+                            } else if let Some(v) = part.strip_prefix("WPos:") {
+                                wpos = xy(v);
+                            } else if let Some(v) = part.strip_prefix("WCO:") {
+                                if let Some(o) = xy(v) {
+                                    wco = o;
                                 }
                             }
                         }
-                        emit(Ev::Status { state, pos }, &tx);
+                        let pos = mpos.or(wpos.map(|w| [w[0] + wco[0], w[1] + wco[1]]));
+                        let work = wpos.or(mpos.map(|m| [m[0] - wco[0], m[1] - wco[1]]));
+                        emit(Ev::Status { state, pos, work }, &tx);
                         continue;
                     }
                     if line == "ok" || line.starts_with("error") {
@@ -206,7 +219,7 @@ mod tests {
                 match &e {
                     Ev::Received(t) => println!("HW < {t}"),
                     Ev::Sent(t) => println!("HW > {t}"),
-                    Ev::Status { state, pos } => println!("HW status {state} {pos:?}"),
+                    Ev::Status { state, pos, .. } => println!("HW status {state} {pos:?}"),
                     Ev::Connected(p) => println!("HW connected {p}"),
                     Ev::Disconnected(r) => println!("HW disconnected {r}"),
                     Ev::Progress(a, b) => println!("HW progress {a}/{b}"),
@@ -275,7 +288,7 @@ mod tests {
         let mut doc = Document::default();
         doc.add_shape(Shape::new(0, Geometry::Rect { w: 10.0, h: 10.0, radius: 0.0 }, 0, 30.0, 30.0));
         doc.add_shape(Shape::new(0, Geometry::Rect { w: 10.0, h: 10.0, radius: 0.0 }, 0, 70.0, 60.0));
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true, selection_origin: false };
         let job = plan(&doc, &[], &opts);
         let f = frame_gcode(&doc, &job, &opts, 3000.0, "0");
         println!("HW frame {f:?}");

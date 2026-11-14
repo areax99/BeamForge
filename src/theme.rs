@@ -324,7 +324,6 @@ const LARGEST_SIZES: &[(&str, [f32; 2])] = &[
     ("interval_test", [491.0, 314.0]),
     // + the overlap warning line (≈ 24 pt)
     ("offset", [418.0, 312.0]),
-    ("device", [385.0, 458.0]),
     ("about", [459.0, 637.0]),
     ("devices", [626.0, 553.0]),
     ("device_editor", [429.0, 420.0]),

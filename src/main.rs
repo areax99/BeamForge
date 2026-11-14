@@ -4,6 +4,7 @@
 mod app;
 mod canvas;
 mod combine;
+mod device_ui;
 mod devices;
 mod fileicon;
 mod formats;

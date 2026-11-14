@@ -18,7 +18,19 @@ fn unit_scale(bytes: &[u8]) -> f64 {
         let v: String = w.trim_start_matches(['"', '\'']).chars().take_while(|c| *c != '"' && *c != '\'').collect();
         Some(["mm", "cm", "in", "pt", "pc"].iter().any(|u| v.trim().ends_with(u)))
     });
-    if physical != Some(true) && text.contains("Adobe Illustrator") { PT_TO_MM } else { PX_TO_MM }
+    if physical == Some(true) {
+        return PX_TO_MM;
+    }
+    // Impostazioni > Importa/Esporta: "Rilevazione automatica" picks 72 DPI for Illustrator files;
+    // otherwise (and with it off) the DPI chosen there, 96 (Inkscape) by default
+    let (auto, dpi) = crate::prefs::with(|p| (p.svg_auto_dpi, p.svg_dpi));
+    if auto && text.contains("Adobe Illustrator") {
+        PT_TO_MM
+    } else if dpi == 72 {
+        PT_TO_MM
+    } else {
+        PX_TO_MM
+    }
 }
 
 pub fn import_svg(bytes: &[u8]) -> Result<Vec<Shape>, String> {

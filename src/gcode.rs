@@ -28,6 +28,8 @@ pub struct JobOptions {
     pub job_origin: usize,
     pub selected_only: bool,
     pub optimize: bool,
+    /// "Usa origine selezione": the job origin is taken from the selection's box, not the job's
+    pub selection_origin: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,6 +53,46 @@ pub struct Move {
     /// mm/min
     pub speed: f64,
     pub layer: usize,
+}
+
+/// The motion model the preview's times use (device > Altre impostazioni).
+#[derive(Clone, Debug)]
+pub struct Sim {
+    /// mm/s
+    pub rapid: f64,
+    /// top speed per axis, mm/s
+    pub max_speed: [f64; 2],
+    /// mm/s² per axis
+    pub cut_accel: [f64; 2],
+    pub engrave_accel: [f64; 2],
+    /// mm/s
+    pub min_corner: f64,
+    /// percent
+    pub cut_scale: f64,
+    pub global_scale: f64,
+    /// per layer: engraves (fill / image) rather than cuts
+    pub engrave_layers: Vec<bool>,
+}
+
+impl Default for Sim {
+    fn default() -> Self {
+        Sim {
+            rapid: 400.0,
+            max_speed: [f64::INFINITY; 2],
+            cut_accel: [3000.0; 2],
+            engrave_accel: [3000.0; 2],
+            min_corner: 0.0,
+            cut_scale: 100.0,
+            global_scale: 100.0,
+            engrave_layers: Vec::new(),
+        }
+    }
+}
+
+impl Sim {
+    fn engraving(&self, layer: usize) -> bool {
+        self.engrave_layers.get(layer).copied().unwrap_or(false)
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -83,6 +125,22 @@ impl Job {
         self.move_seconds(rapid_speed, accel).iter().sum()
     }
 
+    /// "Impostazioni della simulazione" from the device, and which layers engrave (Fill, Offset
+    /// Fill, Image) rather than cut.
+    pub fn sim_for(doc: &Document) -> Sim {
+        let d = &doc.device;
+        Sim {
+            rapid: d.rapid_speed,
+            max_speed: d.max_speed,
+            cut_accel: d.cut_accel,
+            engrave_accel: d.engrave_accel,
+            min_corner: d.min_corner_speed,
+            cut_scale: d.cut_speed_scale,
+            global_scale: d.global_speed_scale,
+            engrave_layers: (0..doc.layers.len()).map(|l| doc.layer_art(l).clamp(doc.layers[l].mode) != CutMode::Line).collect(),
+        }
+    }
+
     /// Length of the moves with the laser off (rapids and overscan), mm.
     pub fn rapid_length(&self) -> f64 {
         let mut last = self.start;
@@ -98,28 +156,62 @@ impl Job {
 
     /// Seconds each move takes, with the same motion model as `estimate_seconds`.
     pub fn move_seconds(&self, rapid_speed: f64, accel: f64) -> Vec<f64> {
-        let a = accel.max(1.0);
+        let sim = Sim { rapid: rapid_speed, cut_accel: [accel; 2], engrave_accel: [accel; 2], ..Sim::default() };
+        self.move_seconds_sim(&sim)
+    }
+
+    /// Job time with the device's "Impostazioni della simulazione".
+    pub fn estimate_seconds_sim(&self, sim: &Sim) -> f64 {
+        self.move_seconds_sim(sim).iter().sum()
+    }
+
+    /// Seconds each move takes with the device's simulation settings: per-axis top speeds and
+    /// accelerations (cutting or engraving by the move's layer), the speed scales and the
+    /// lowest corner speed. They only change the preview's times, never the G-code.
+    pub fn move_seconds_sim(&self, sim: &Sim) -> Vec<f64> {
         let mut times = Vec::with_capacity(self.moves.len());
         let n = self.moves.len();
         let mut pts = Vec::with_capacity(n + 1);
         pts.push(self.start);
         pts.extend(self.moves.iter().map(|m| m.to));
-        let speed_of = |m: &Move| match m.kind {
-            MoveKind::Rapid | MoveKind::Dot { .. } => rapid_speed,
-            _ => m.speed / 60.0,
+        let dir = |i: usize| {
+            let d = dist(pts[i], pts[i + 1]);
+            if d > 1e-9 { [(pts[i + 1][0] - pts[i][0]) / d, (pts[i + 1][1] - pts[i][1]) / d] } else { [0.0, 0.0] }
+        };
+        // along direction (ux, uy), the axes allow v so that |ux|·v ≤ x limit and |uy|·v ≤ y limit
+        let along = |lim: [f64; 2], u: [f64; 2]| {
+            let mut v = f64::INFINITY;
+            if u[0].abs() > 1e-9 {
+                v = v.min(lim[0] / u[0].abs());
+            }
+            if u[1].abs() > 1e-9 {
+                v = v.min(lim[1] / u[1].abs());
+            }
+            if v.is_finite() { v } else { lim[0].min(lim[1]) }
+        };
+        let global = (sim.global_scale / 100.0).max(0.01);
+        let speed_of = |i: usize| {
+            let m = &self.moves[i];
+            let base = match m.kind {
+                MoveKind::Rapid | MoveKind::Dot { .. } => sim.rapid,
+                _ => m.speed / 60.0 * if sim.engraving(m.layer) { 1.0 } else { (sim.cut_scale / 100.0).max(0.01) },
+            };
+            (base * global).min(along(sim.max_speed, dir(i)))
+        };
+        let accel_of = |i: usize| {
+            let m = &self.moves[i];
+            let lim = if !matches!(m.kind, MoveKind::Rapid) && sim.engraving(m.layer) { sim.engrave_accel } else { sim.cut_accel };
+            along(lim, dir(i)).max(1.0)
         };
         let dwell = |m: &Move| match m.kind {
             MoveKind::Dot { us } => us as f64 / 1e6,
             _ => 0.0,
         };
-        let dir = |i: usize| {
-            let d = dist(pts[i], pts[i + 1]);
-            if d > 1e-9 { [(pts[i + 1][0] - pts[i][0]) / d, (pts[i + 1][1] - pts[i][1]) / d] } else { [0.0, 0.0] }
-        };
         let mut v_in = 0.0f64;
         for i in 0..n {
             let d = dist(pts[i], pts[i + 1]);
-            let vmax = speed_of(&self.moves[i]).max(0.1);
+            let vmax = speed_of(i).max(0.1);
+            let a = accel_of(i);
             if d < 1e-9 {
                 times.push(dwell(&self.moves[i]));
                 continue;
@@ -129,7 +221,9 @@ impl Job {
             let v_out_target = if !stops && i + 1 < n && std::mem::discriminant(&self.moves[i].kind) == std::mem::discriminant(&self.moves[i + 1].kind) {
                 let (p, q) = (dir(i), dir(i + 1));
                 let c = (p[0] * q[0] + p[1] * q[1]).max(0.0);
-                vmax.min(speed_of(&self.moves[i + 1])) * c
+                // "Velocità d'angolo minima": a real turn is never taken slower than this
+                let turn = vmax.min(speed_of(i + 1)) * c;
+                if c < 1.0 - 1e-9 { turn.max(sim.min_corner.min(vmax)) } else { turn }
             } else {
                 0.0
             };
@@ -702,6 +796,95 @@ fn shape_groups<'a>(shapes: &[&'a Shape], grouping: crate::model::FillGrouping) 
     }
 }
 
+/// Drop the points of an outline that bend it by less than `tol` mm (Douglas-Peucker). A closed
+/// outline keeps at least a triangle, an open one its two ends.
+fn simplify(p: Polyline, tol: f64) -> Polyline {
+    if tol <= 0.0 || p.pts.len() < 4 {
+        return p;
+    }
+    fn dp(pts: &[P2], tol: f64, keep: &mut [bool], a: usize, b: usize) {
+        if b <= a + 1 {
+            return;
+        }
+        let (pa, pb) = (pts[a], pts[b]);
+        let (dx, dy) = (pb[0] - pa[0], pb[1] - pa[1]);
+        let l = (dx * dx + dy * dy).sqrt();
+        let mut far = (0.0, a);
+        for i in a + 1..b {
+            let d = if l > 1e-12 { ((pts[i][0] - pa[0]) * dy - (pts[i][1] - pa[1]) * dx).abs() / l } else { dist(pts[i], pa) };
+            if d > far.0 {
+                far = (d, i);
+            }
+        }
+        if far.0 > tol {
+            keep[far.1] = true;
+            dp(pts, tol, keep, a, far.1);
+            dp(pts, tol, keep, far.1, b);
+        }
+    }
+    let mut pts = p.pts.clone();
+    if p.closed {
+        pts.push(pts[0]);
+    }
+    let n = pts.len();
+    let mut keep = vec![false; n];
+    keep[0] = true;
+    keep[n - 1] = true;
+    // a closed outline is split at its farthest point too, so it can't collapse to a line
+    if p.closed {
+        let far = (1..n - 1).max_by(|&i, &j| dist(pts[i], pts[0]).total_cmp(&dist(pts[j], pts[0]))).unwrap_or(1);
+        keep[far] = true;
+        dp(&pts, tol, &mut keep, 0, far);
+        dp(&pts, tol, &mut keep, far, n - 1);
+    } else {
+        dp(&pts, tol, &mut keep, 0, n - 1);
+    }
+    let mut out: Vec<P2> = pts.iter().zip(&keep).filter(|(_, k)| **k).map(|(q, _)| *q).collect();
+    if p.closed {
+        out.pop();
+        if out.len() < 3 {
+            return p;
+        }
+    }
+    Polyline { pts: out, closed: p.closed }
+}
+
+/// "Regolazione offset di scansione" (device settings): the ends of every scan line run backwards
+/// (against the scan direction at `angle_deg`) are moved `shift` mm back along it, so on a
+/// machine whose belts lag the two directions line up. Dots and connecting moves stay put.
+fn scan_shift(moves: &mut [Move], angle_deg: f64, shift: f64) {
+    if shift.abs() < 1e-9 || moves.len() < 2 {
+        return;
+    }
+    let a = angle_deg.to_radians();
+    let u = [a.cos(), a.sin()];
+    let mut marked = vec![false; moves.len()];
+    for i in 1..moves.len() {
+        if matches!(moves[i].kind, MoveKind::Rapid | MoveKind::Dot { .. }) {
+            continue;
+        }
+        let (p, q) = (moves[i - 1].to, moves[i].to);
+        let d = [q[0] - p[0], q[1] - p[1]];
+        let l = (d[0] * d[0] + d[1] * d[1]).sqrt();
+        // along the scan line, going backwards
+        if l > 1e-9 && (d[0] * u[0] + d[1] * u[1]) / l < -0.999 {
+            marked[i - 1] = true;
+            marked[i] = true;
+        }
+    }
+    for (m, k) in moves.iter_mut().zip(marked) {
+        if k {
+            m.to = [m.to[0] - shift * u[0], m.to[1] - shift * u[1]];
+        }
+    }
+}
+
+/// Whether any part of a shape is on the work area.
+fn overlaps_work_area(doc: &Document, s: &Shape) -> bool {
+    let b = s.bbox();
+    !b.is_valid() || (b.max[0] >= 0.0 && b.max[1] >= 0.0 && b.min[0] <= doc.device.width && b.min[1] <= doc.device.height)
+}
+
 /// Build the job in world coordinates (mm).
 pub fn plan(doc: &Document, selection: &[u64], opts: &JobOptions) -> Job {
     let mut job = Job::default();
@@ -711,6 +894,8 @@ pub fn plan(doc: &Document, selection: &[u64], opts: &JobOptions) -> Job {
         .filter(|s| !opts.selected_only || selection.contains(&s.id))
         .filter(|s| !is_tool_layer(s.layer))
         .filter(|s| doc.layers[s.layer].output)
+        // "Ignora le forme fuori limite se possibile": a shape wholly outside the work area is left out
+        .filter(|s| !crate::prefs::with(|p| p.ignore_out_of_bounds) || overlaps_work_area(doc, s))
         .collect();
     let mut bounds = BBox::empty();
     for s in &shapes {
@@ -720,9 +905,20 @@ pub fn plan(doc: &Document, selection: &[u64], opts: &JobOptions) -> Job {
         return job;
     }
     job.bounds = Some(bounds);
+    // "Usa origine selezione": the origin comes from the selected shapes' box
+    let mut origin_box = bounds;
+    if opts.selection_origin && !selection.is_empty() {
+        let mut sb = BBox::empty();
+        for s in doc.shapes.iter().filter(|s| selection.contains(&s.id)) {
+            sb.union(&s.bbox());
+        }
+        if sb.is_valid() {
+            origin_box = sb;
+        }
+    }
     let mut pos = match opts.start_from {
         StartFrom::AbsoluteCoords => [0.0, 0.0],
-        _ => bounds.anchor(opts.job_origin),
+        _ => origin_box.anchor(opts.job_origin),
     };
     job.start = pos;
     for layer in doc.used_layers() {
@@ -749,6 +945,9 @@ pub fn plan(doc: &Document, selection: &[u64], opts: &JobOptions) -> Job {
                         .filter(|s| !matches!(s.geom, Geometry::Image { .. }))
                         .flat_map(|s| s.world_paths())
                         .filter(|p| p.pts.len() > 1)
+                        // "Tolleranza curva (mm)" (Impostazioni > Importa/Esporta): points that bend the
+                        // line by less than this are dropped
+                        .map(|p| simplify(p, crate::prefs::with(|q| q.curve_tolerance)))
                         .collect();
                     let rings: Vec<Polyline> = paths.iter().filter(|p| p.closed).cloned().collect();
                     let manual: Vec<P2> = if cs.tabs_enabled && cs.manual_tabs {
@@ -766,9 +965,13 @@ pub fn plan(doc: &Document, selection: &[u64], opts: &JobOptions) -> Job {
                     // disables it, CutSettingEdit::on_cbFloodFill_stateChanged 0x100b86bf4)
                     let grouping = if cs.flood_fill { crate::model::FillGrouping::MergeAll } else { cs.fill_grouping };
                     for rings in fill_sets(&layer_shapes, grouping) {
+                        let from = job.moves.len();
                         fill_lines(&rings, cs, cs.angle, &mut job.moves, layer, &mut pos);
+                        scan_shift(&mut job.moves[from..], cs.angle, doc.device.scan_shift(cs.speed));
                         if cs.crosshatch {
+                            let from = job.moves.len();
                             fill_lines(&rings, cs, cs.angle + 90.0, &mut job.moves, layer, &mut pos);
+                            scan_shift(&mut job.moves[from..], cs.angle + 90.0, doc.device.scan_shift(cs.speed));
                         }
                     }
                 }
@@ -778,12 +981,16 @@ pub fn plan(doc: &Document, selection: &[u64], opts: &JobOptions) -> Job {
                 }
                 CutMode::Image => {
                     let (images, vectors): (Vec<&Shape>, Vec<&Shape>) = layer_shapes.iter().copied().partition(|s| matches!(s.geom, Geometry::Image { .. }));
+                    let from = job.moves.len();
                     for rings in fill_sets(&vectors, cs.fill_grouping) {
                         fill_lines(&rings, cs, cs.angle, &mut job.moves, layer, &mut pos);
                     }
+                    scan_shift(&mut job.moves[from..], cs.angle, doc.device.scan_shift(cs.speed));
+                    let from = job.moves.len();
                     for group in shape_groups(&images, cs.fill_grouping) {
                         image_lines(&group, cs, pass, passes, &mut job.moves, layer, &mut pos);
                     }
+                    scan_shift(&mut job.moves[from..], 0.0, doc.device.scan_shift(cs.speed));
                 }
             }
         }
@@ -1320,8 +1527,12 @@ fn trace_path(doc: &Document, job: &Job, opts: &JobOptions, path: &[P2], speed_m
     let relative = opts.start_from == StartFrom::CurrentPosition;
     v.push(if relative { "G91".into() } else { "G90".into() });
     let mut last = to_machine(doc, job, opts, job.start);
+    // "Abilita offset puntatore": framing without the beam is followed by the red-dot pointer,
+    // which sits `pointer_offset` from the beam, so the head goes that much the other way
+    let d = &doc.device;
+    let shift = if d.pointer_offset_on && power == "0" { d.pointer_offset } else { [0.0, 0.0] };
     for (i, &c) in path.iter().enumerate() {
-        let mp = to_machine(doc, job, opts, c);
+        let mp = to_machine(doc, job, opts, [c[0] - shift[0], c[1] - shift[1]]);
         let t = if relative { [mp[0] - last[0], mp[1] - last[1]] } else { mp };
         if i == 0 {
             v.push(format!("G1 X{} Y{} S0 F{}", num(t[0]), num(t[1]), num(speed_mm_min)));
@@ -1431,7 +1642,7 @@ mod tests {
         doc.add_shape(Shape::new(0, Geometry::Rect { w: 20.0, h: 10.0, radius: 0.0 }, 0, 50.0, 50.0));
         doc.add_shape(Shape::new(0, Geometry::Ellipse { rx: 5.0, ry: 5.0 }, 1, 100.0, 100.0));
         doc.layers[1].mode = CutMode::Fill;
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true, selection_origin: false };
         let job = plan(&doc, &[], &opts);
         let g = write_gcode(&doc, &job, &opts);
         println!("{}", g.lines().take(14).collect::<Vec<_>>().join("\n"));
@@ -1456,7 +1667,7 @@ mod tests {
         // a triangle-like spread: two small squares far apart diagonally
         doc.add_shape(Shape::new(0, Geometry::Rect { w: 10.0, h: 10.0, radius: 0.0 }, 0, 20.0, 20.0));
         doc.add_shape(Shape::new(0, Geometry::Rect { w: 10.0, h: 10.0, radius: 0.0 }, 0, 80.0, 80.0));
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true, selection_origin: false };
         let job = plan(&doc, &[], &opts);
         let o = outline_frame_gcode(&doc, &job, &opts, 3000.0, &s_for_pct(FRAME_POWER_PCT, 1000.0));
         // hull of two diagonal squares has 6 corners (+ closing move), the box frame 5 moves
@@ -1490,7 +1701,7 @@ mod tests {
         let mut doc = Document::default();
         doc.layers[0].speed = 2500.0;
         doc.add_shape(Shape::new(0, Geometry::Rect { w: 10.0, h: 10.0, radius: 0.0 }, 0, 20.0, 20.0));
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true, selection_origin: false };
         let job = plan(&doc, &[], &opts);
         let g = write_gcode(&doc, &job, &opts);
         assert!(g.contains("F2500"));
@@ -1506,7 +1717,7 @@ mod tests {
         let mut doc = Document::default();
         setup(&mut doc.layers[0]);
         doc.add_shape(Shape::new(0, Geometry::Rect { w: 100.0, h: 100.0, radius: 0.0 }, 0, 100.0, 100.0));
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false, selection_origin: false };
         plan(&doc, &[], &opts)
     }
 
@@ -1542,7 +1753,7 @@ mod tests {
         doc.layers[0].tab_size = 3.0;
         doc.add_shape(Shape::new(0, Geometry::Rect { w: 100.0, h: 100.0, radius: 0.0 }, 0, 100.0, 100.0));
         doc.shapes[0].tabs = vec![(0, 0.1), (0, 0.6)];
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false, selection_origin: false };
         let job = plan(&doc, &[], &opts);
         assert!((cut_len(&job, MoveKind::Travel) - 6.0).abs() < 1e-6);
         assert!((cut_len(&job, MoveKind::Cut) - 394.0).abs() < 1e-6);
@@ -1612,7 +1823,7 @@ mod tests {
         doc.layers[0].mode = CutMode::OffsetFill;
         doc.layers[0].constant_power = true;
         doc.device.dynamic_power = true;
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: true, selection_origin: false };
         let job = plan(&doc, &[], &opts);
         assert!(!job.moves.is_empty());
         let g = write_gcode(&doc, &job, &opts);
@@ -1630,7 +1841,7 @@ mod tests {
         tweak(&mut doc.layers[0]);
         let w = px as f64;
         doc.add_shape(Shape::new(0, Geometry::Image { w, h: 1.0, px_w: px, px_h: 1, gray }, 0, w / 2.0, 0.5));
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false, selection_origin: false };
         plan(&doc, &[], &opts)
     }
 
@@ -1671,10 +1882,30 @@ mod tests {
         assert_eq!(dots[0], 2000);
         assert!(dots[1] > 800 && dots[1] < 1200);
         let doc = Document::default();
-        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false };
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false, selection_origin: false };
         let g = write_gcode(&doc, &job, &opts);
         assert!(g.contains("M3 S"), "{g}");
         assert!(g.contains("G4 P0.002\nM5"), "{g}");
+    }
+
+    #[test]
+    fn scan_offset_moves_only_backward_lines() {
+        let mut d = crate::model::Device::default();
+        d.scan_offset_on = true;
+        d.scan_offsets = vec![crate::model::ScanOffset { speed: 100.0, shift: 0.2, start: 0.0, laser2: false }];
+        // 6000 mm/min = 100 mm/s → 0.2 mm
+        assert!((d.scan_shift(6000.0) - 0.2).abs() < 1e-9);
+        let mv = |kind, x: f64, y: f64| Move { kind, to: [x, y], power: 50.0, speed: 6000.0, layer: 0 };
+        let mut moves = vec![
+            mv(MoveKind::Rapid, 0.0, 0.0),
+            mv(MoveKind::Cut, 10.0, 0.0),
+            mv(MoveKind::Travel, 10.0, 0.1),
+            mv(MoveKind::Cut, 0.0, 0.1),
+        ];
+        scan_shift(&mut moves, 0.0, d.scan_shift(6000.0));
+        // the forward line stays, the backward line (both its ends) moves 0.2 mm left
+        assert_eq!(moves[1].to, [10.0, 0.0]);
+        assert!((moves[2].to[0] - 9.8).abs() < 1e-9 && (moves[3].to[0] + 0.2).abs() < 1e-9);
     }
 
     #[test]

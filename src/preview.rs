@@ -54,7 +54,6 @@ pub struct Preview {
 impl Preview {
     /// `project` is the open document; a test's own `doc` is used instead when given.
     pub fn new(job: Job, gcode: String, doc: Option<Document>, project: &Document) -> Self {
-        let device = &project.device;
         let layers_doc = doc.as_ref().unwrap_or(project);
         // the kinds of work, each with the layers doing it, in the order they first burn
         let colored = doc.is_none();
@@ -94,7 +93,7 @@ impl Preview {
                 (inks, text)
             })
             .collect();
-        let secs = job.move_seconds(device.rapid_speed, device.accel);
+        let secs = job.move_seconds_sim(&crate::gcode::Job::sim_for(layers_doc));
         let mut ends = Vec::with_capacity(secs.len());
         let (mut t, mut cut) = (0.0, 0.0);
         for (m, s) in job.moves.iter().zip(&secs) {

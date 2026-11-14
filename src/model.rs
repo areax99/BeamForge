@@ -37,7 +37,9 @@ pub fn is_tool_layer(i: usize) -> bool {
 pub fn nearest_layer(r: u8, g: u8, b: u8) -> usize {
     let mut best = 0;
     let mut best_d = i32::MAX;
-    for (i, c) in PALETTE.iter().enumerate().take(CUT_LAYER_COUNT) {
+    // "Consenti l'importazione sui livelli degli strumenti": colours may also land on T1 / T2
+    let n = if crate::prefs::with(|p| p.import_on_tool_layers) { LAYER_COUNT } else { CUT_LAYER_COUNT };
+    for (i, c) in PALETTE.iter().enumerate().take(n) {
         let dr = c[0] as i32 - r as i32;
         let dg = c[1] as i32 - g as i32;
         let db = c[2] as i32 - b as i32;
@@ -395,6 +397,96 @@ pub struct Device {
     /// Laser source type code 0..=9 (LaserSource enum, SourceDisplayName 0x100b21ec0,
     /// name table 0x100b6a320); 1 = Diode
     pub laser_source: u8,
+    // --- Impostazioni della periferica (the person's pictures 9-12) ---
+    /// "Coordinate della macchina": jobs in absolute coordinates go to the machine's own
+    /// coordinates (G53 on each move) instead of the work coordinates (G54)
+    pub machine_coords: bool,
+    /// "Abilita offset puntatore": where the red-dot pointer sits from the beam, mm
+    pub pointer_offset_on: bool,
+    pub pointer_offset: [f64; 2],
+    /// "Unità di controllo": speeds shown in mm/s instead of mm/min
+    pub speed_mm_s: bool,
+    /// "Collega le unità di controllo e di progettazione"
+    pub link_units: bool,
+    /// "Larghezza impulso linguetta (mm)"
+    pub tab_pulse_width: f64,
+    /// "Abilita la lista di controllo lavori" and its items, asked before each start
+    pub job_checklist_on: bool,
+    pub job_checklist: Vec<String>,
+    /// "Abilita regolazione offset di scansione": per speed (mm/s), how far (mm) lines scanned
+    /// right to left are moved to line up with those scanned left to right
+    pub scan_offset_on: bool,
+    pub scan_offsets: Vec<ScanOffset>,
+    /// "Nome Laser 1"
+    pub laser1_name: String,
+    pub laser1_rf: bool,
+    pub laser1_fiber: bool,
+    /// "Abilita comandi Laser 2" and its options
+    pub laser2_on: bool,
+    pub laser2_name: String,
+    pub one_laser_at_once: bool,
+    pub laser2_rf: bool,
+    pub laser2_fiber: bool,
+    pub laser2_offset_on: bool,
+    pub laser2_offset: [f64; 2],
+    /// "Impostazioni della simulazione" (only the preview's timing): top speed per axis, mm/s
+    pub max_speed: [f64; 2],
+    /// acceleration for cutting and for engraving, per axis, mm/s²
+    pub cut_accel: [f64; 2],
+    pub engrave_accel: [f64; 2],
+    /// "Precisione angolo" (mm) and "Velocità d'angolo minima" (mm/s)
+    pub corner_precision: f64,
+    pub min_corner_speed: f64,
+    /// "Scala velocità taglio" and "Scala della velocità globale", percent
+    pub cut_speed_scale: f64,
+    pub global_speed_scale: f64,
+    /// "Abilita porta di accesso API permanente" (Estensioni)
+    pub api_port_on: bool,
+    pub api_port: u16,
+}
+
+/// One row of the scan offset table.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct ScanOffset {
+    /// mm/s
+    pub speed: f64,
+    /// "Spostamento linea", mm
+    pub shift: f64,
+    /// "Offset iniziale", mm
+    pub start: f64,
+    /// false: Laser 1, true: Laser 2
+    pub laser2: bool,
+}
+
+impl Device {
+    /// "Regolazione offset di scansione": how far a right-to-left line is moved at `speed`
+    /// (mm/min), from the table by straight interpolation between its rows (ends held).
+    pub fn scan_shift(&self, speed_mm_min: f64) -> f64 {
+        if !self.scan_offset_on {
+            return 0.0;
+        }
+        let v = speed_mm_min / 60.0;
+        let mut rows: Vec<&ScanOffset> = self.scan_offsets.iter().filter(|r| !r.laser2).collect();
+        rows.sort_by(|a, b| a.speed.total_cmp(&b.speed));
+        match rows.as_slice() {
+            [] => 0.0,
+            [r] => r.shift + r.start,
+            _ => {
+                if v <= rows[0].speed {
+                    return rows[0].shift + rows[0].start;
+                }
+                for w in rows.windows(2) {
+                    if v <= w[1].speed {
+                        let t = (v - w[0].speed) / (w[1].speed - w[0].speed).max(1e-9);
+                        return (w[0].shift + w[0].start) + t * ((w[1].shift + w[1].start) - (w[0].shift + w[0].start));
+                    }
+                }
+                let r = rows[rows.len() - 1];
+                r.shift + r.start
+            }
+        }
+    }
 }
 
 /// Laser source codes and display names, in the order of SourceDisplayName (0x100b21ec0).
@@ -429,6 +521,40 @@ impl Default for Device {
             controller: "GRBL".into(),
             port: String::new(),
             laser_source: 1,
+            // defaults from the person's pictures of the original's device settings
+            machine_coords: true,
+            pointer_offset_on: false,
+            pointer_offset: [0.0, 0.0],
+            speed_mm_s: false,
+            link_units: true,
+            tab_pulse_width: 0.05,
+            job_checklist_on: false,
+            job_checklist: vec![
+                "Il materiale è fissato e a fuoco".into(),
+                "L'aria compressa è accesa".into(),
+                "L'aspirazione è accesa".into(),
+            ],
+            scan_offset_on: false,
+            scan_offsets: Vec::new(),
+            laser1_name: String::new(),
+            laser1_rf: false,
+            laser1_fiber: false,
+            laser2_on: false,
+            laser2_name: String::new(),
+            one_laser_at_once: false,
+            laser2_rf: false,
+            laser2_fiber: false,
+            laser2_offset_on: false,
+            laser2_offset: [0.0, 0.0],
+            max_speed: [500.0, 400.0],
+            cut_accel: [3000.0, 3000.0],
+            engrave_accel: [3000.0, 3000.0],
+            corner_precision: 0.01,
+            min_corner_speed: 1.0,
+            cut_speed_scale: 100.0,
+            global_speed_scale: 100.0,
+            api_port_on: false,
+            api_port: 19000,
         }
     }
 }
@@ -632,7 +758,7 @@ impl Geometry {
         match self {
             Geometry::Rect { w, h, radius } => vec![Polyline { pts: rounded_rect(*w, *h, *radius), closed: true }],
             Geometry::Ellipse { rx, ry } => {
-                let n = ((rx.abs().max(ry.abs()) * 2.0) as usize).clamp(48, 360);
+                let n = crate::prefs::curve_segments(((rx.abs().max(ry.abs()) * 2.0) as usize).clamp(48, 360));
                 vec![Polyline { pts: ellipse_pts(*rx, *ry, n), closed: true }]
             }
             Geometry::Polygon { sides, r, ry: Some(ry) } => vec![Polyline { pts: polygon_box_pts(*sides, *r, *ry), closed: true }],
@@ -836,6 +962,19 @@ pub struct Document {
     pub layer_order: Vec<usize>,
     pub next_id: u64,
     pub device: Device,
+    /// Laser-panel states kept with the project when the settings say so (Impostazioni editor:
+    /// "Salva Taglia selezionata / Origine selezione nel progetto", "Salva origine lavoro")
+    pub job_state: SavedJobState,
+}
+
+/// What a project remembers of the Laser panel; None = not saved with it.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct SavedJobState {
+    pub cut_selected: Option<bool>,
+    pub selection_origin: Option<bool>,
+    pub start_from: Option<crate::gcode::StartFrom>,
+    pub job_origin: Option<usize>,
 }
 
 impl Default for Document {
@@ -850,7 +989,7 @@ impl Default for Document {
                 c
             })
             .collect();
-        Document { shapes: Vec::new(), layers, layer_order: Vec::new(), next_id: 1, device: Device::default() }
+        Document { shapes: Vec::new(), layers, layer_order: Vec::new(), next_id: 1, device: Device::default(), job_state: SavedJobState::default() }
     }
 }
 

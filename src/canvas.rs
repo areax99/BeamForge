@@ -53,6 +53,20 @@ fn minor_grid_color(major_px: f32) -> Option<Color32> {
     Some(Color32::from_gray((GRID_MINOR_BASE + (full - GRID_MINOR_BASE) * t).round() as u8))
 }
 
+/// "Contrasto griglia" (Impostazioni > Unità e Griglie): Basso keeps the theme's grid colours,
+/// Medio and Alto move them a quarter and a half of the way from the page towards the ink.
+fn grid_contrast(app: &BeamForge, c: Color32) -> Color32 {
+    use crate::prefs::GridContrast;
+    let k = match app.prefs.grid_contrast {
+        GridContrast::Low => return c,
+        GridContrast::Medium => 0.25,
+        GridContrast::High => 0.5,
+    };
+    let ink = crate::theme::p().ink;
+    let mix = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * k).round() as u8;
+    Color32::from_rgb(mix(c.r(), ink.r()), mix(c.g(), ink.g()), mix(c.b(), ink.b()))
+}
+
 fn nice_step(zoom: f32) -> f64 {
     // grid step in mm so that lines are at least ~8px apart
     for s in [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0] {
@@ -277,6 +291,92 @@ pub fn constrain_corner(a: P2, b: P2, square: bool) -> P2 {
 /// |dx| and |dy| (1:1 → both the larger); with `centred` (Cmd, the original's Ctrl bit
 /// 0x4000000) the press point is the centre and the box is twice as large, otherwise it is
 /// the corner the drag started from.
+/// Fill a shape's closed outlines on screen (even-odd, so holes stay open), one horizontal run
+/// every two screen pixels, clipped to the visible canvas.
+fn fill_paths(painter: &egui::Painter, xf: &Xf, paths: &[Polyline], fill: Color32, area: Rect) {
+    let rings: Vec<Vec<Pos2>> = paths.iter().filter(|p| p.closed && p.pts.len() > 2).map(|p| p.pts.iter().map(|q| xf.to_screen(*q)).collect()).collect();
+    if rings.is_empty() {
+        return;
+    }
+    let b = Rect::from_points(&rings.iter().flatten().copied().collect::<Vec<_>>()).intersect(area);
+    if !b.is_positive() {
+        return;
+    }
+    let st = Stroke::new(2.0, fill);
+    let mut y = b.top() + 1.0;
+    let mut xs: Vec<f32> = Vec::new();
+    while y < b.bottom() {
+        xs.clear();
+        for r in &rings {
+            for i in 0..r.len() {
+                let (p, q) = (r[i], r[(i + 1) % r.len()]);
+                if (p.y <= y) != (q.y <= y) {
+                    xs.push(p.x + (y - p.y) / (q.y - p.y) * (q.x - p.x));
+                }
+            }
+        }
+        xs.sort_by(|a, c| a.total_cmp(c));
+        for pair in xs.chunks_exact(2) {
+            let (x0, x1) = (pair[0].max(b.left()), pair[1].min(b.right()));
+            if x1 > x0 {
+                painter.line_segment([pos2(x0, y), pos2(x1, y)], st);
+            }
+        }
+        y += 2.0;
+    }
+}
+
+/// Side of the selection's square handles in screen pixels, from "Cursori/Nodi"
+/// (Impostazioni > Schermo: Normale … Enorme).
+fn handle_px(app: &BeamForge) -> f32 {
+    const SIZES: [f32; 5] = [7.0, 9.0, 11.0, 13.0, 16.0];
+    SIZES[(app.prefs.handle_size as usize).min(4)]
+}
+
+/// Most shape corners looked at for "Aggancia agli oggetti", so a huge drawing stays quick.
+const SNAP_MAX_POINTS: usize = 50_000;
+
+/// A drawing point after Impostazioni > Unità e Griglie: to a corner or point of a shape within
+/// "Distanza snap ad oggetto" screen pixels (Aggancia agli oggetti), else to the nearest
+/// "Distanza griglia magnetica" step (Aggancia alla griglia).
+fn snap_point(app: &BeamForge, p: P2) -> P2 {
+    let pr = &app.prefs;
+    if pr.snap_to_objects {
+        let reach = pr.snap_object_distance_px.max(0.5) / app.view.zoom as f64;
+        let mut best: Option<(f64, P2)> = None;
+        let mut seen = 0usize;
+        'shapes: for s in &app.doc.shapes {
+            if matches!(s.geom, Geometry::Image { .. }) || !s.bbox().is_valid() {
+                continue;
+            }
+            let b = s.bbox();
+            if p[0] < b.min[0] - reach || p[0] > b.max[0] + reach || p[1] < b.min[1] - reach || p[1] > b.max[1] + reach {
+                continue;
+            }
+            for pl in s.world_paths() {
+                for q in &pl.pts {
+                    seen += 1;
+                    if seen > SNAP_MAX_POINTS {
+                        break 'shapes;
+                    }
+                    let d = ((q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2)).sqrt();
+                    if d <= reach && best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, *q));
+                    }
+                }
+            }
+        }
+        if let Some((_, q)) = best {
+            return q;
+        }
+    }
+    if pr.snap_to_grid {
+        let g = pr.snap_grid_distance.max(0.01);
+        return [(p[0] / g).round() * g, (p[1] / g).round() * g];
+    }
+    p
+}
+
 pub fn drag_box(start: P2, cur: P2, square: bool, centred: bool) -> (P2, P2) {
     let b = constrain_corner(start, cur, square);
     if centred {
@@ -442,12 +542,19 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
     }
     let xf = Xf { origin: area.min + app.view.offset, zoom: app.view.zoom };
     let cursor = hover.map(|h| xf.to_world(h));
-    app.cursor_world = cursor;
-    let tol = 5.0 / app.view.zoom as f64;
+    // "Tolleranza selezione clic (pixel)" (Impostazioni > Unità e Griglie)
+    let tol = app.prefs.click_tolerance_px.max(0.5) / app.view.zoom as f64;
     let mods = ctx.input(|i| i.modifiers);
 
     // ---------- tool interaction ----------
     let press = ctx.input(|i| i.pointer.press_origin()).map(|p| xf.to_world(p));
+    // drawing tools take snapped points (Aggancia agli oggetti / alla griglia); Alt draws freely
+    let (cursor, press) = if app.tool != Tool::Select && !mods.alt {
+        (cursor.map(|c| snap_point(app, c)), press.map(|c| snap_point(app, c)))
+    } else {
+        (cursor, press)
+    };
+    app.cursor_world = cursor;
     let sel_box = app.doc.bbox_of(&app.selection);
     match app.tool {
         Tool::Select => {
@@ -455,7 +562,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
                 if let Some(p0) = press {
                     let mut started = false;
                     // Shift turns the corner handles into rotate arrows (as the person asked)
-                    if sel_box.is_valid() && mods.shift {
+                    if sel_box.is_valid() && mods.shift && app.edit_switches[2] {
                         let pivot = sel_box.center();
                         let mid = xf.to_screen(pivot);
                         for hp in handle_points(&sel_box).iter().step_by(2) {
@@ -469,11 +576,11 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
                         }
                     }
                     // while Shift shows the rotate arrows, corners don't resize
-                    if sel_box.is_valid() && !started && !mods.shift {
+                    if sel_box.is_valid() && !started && !mods.shift && app.edit_switches[1] {
                         for (i, hp) in handle_points(&sel_box).iter().enumerate() {
                             let sp = xf.to_screen(*hp);
                             let pp = xf.to_screen(p0);
-                            if (sp - pp).length() < 7.0 {
+                            if (sp - pp).length() < handle_px(app).max(7.0) {
                                 app.checkpoint(frame);
                                 app.drag = Drag::Scale { handle: i, orig: app.selected_shapes(), bbox: sel_box };
                                 started = true;
@@ -491,11 +598,17 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
                                     app.selection = sel;
                                 }
                                 app.checkpoint(frame);
-                                app.drag = Drag::Move { start: p0, orig: app.selected_shapes() };
+                                // the Sposta switch (bottom bar) off: shapes can be picked but not dragged
+                                if app.edit_switches[0] {
+                                    app.drag = Drag::Move { start: p0, orig: app.selected_shapes() };
+                                }
                             }
                             None if inside_sel && !mods.shift => {
                                 app.checkpoint(frame);
-                                app.drag = Drag::Move { start: p0, orig: app.selected_shapes() };
+                                // the Sposta switch (bottom bar) off: shapes can be picked but not dragged
+                                if app.edit_switches[0] {
+                                    app.drag = Drag::Move { start: p0, orig: app.selected_shapes() };
+                                }
                             }
                             None => app.drag = Drag::Rubber { start: p0 },
                         }
@@ -520,8 +633,21 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
                             }
                         }
                         Drag::Move { start, orig } => {
-                            let dx = cur[0] - start[0];
-                            let dy = cur[1] - start[1];
+                            let mut dx = cur[0] - start[0];
+                            let mut dy = cur[1] - start[1];
+                            // "Aggancia alla griglia": the moved selection's corner lands on the grid
+                            // (Alt moves freely)
+                            if app.prefs.snap_to_grid && !mods.alt {
+                                let mut b = BBox::empty();
+                                for o in orig.iter() {
+                                    b.union(&o.bbox());
+                                }
+                                if b.is_valid() {
+                                    let g = app.prefs.snap_grid_distance.max(0.01);
+                                    dx = ((b.min[0] + dx) / g).round() * g - b.min[0];
+                                    dy = ((b.min[1] + dy) / g).round() * g - b.min[1];
+                                }
+                            }
                             let orig = orig.clone();
                             app.checkpoint(frame);
                             for o in orig {
@@ -610,6 +736,14 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
             if resp.double_clicked() {
                 if app.selection.len() == 1 {
                     app.right_tab = crate::app::RightTab::Shape;
+                    // "Fare doppio clic sulla selezione per visualizzare la finestra di dialogo
+                    // Modifica testo"
+                    if app.prefs.double_click_edits_text {
+                        let id = app.selection[0];
+                        if let Some(Geometry::Text { text, .. }) = app.doc.shapes.iter().find(|s| s.id == id).map(|s| &s.geom) {
+                            app.text_edit = Some((id, text.clone()));
+                        }
+                    }
                 }
             }
         }
@@ -775,7 +909,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
     let mut x = 0.0;
     while x <= d.width + 1e-6 {
         let is_major = (x / major).fract().abs() < 1e-9;
-        let c = if is_major { Some(crate::theme::p().grid_major) } else { minor_color };
+        let c = if is_major { Some(crate::theme::p().grid_major) } else { minor_color }.map(|c| grid_contrast(app, c));
         if let Some(c) = c {
             painter.line_segment([xf.to_screen([x, 0.0]), xf.to_screen([x, d.height])], Stroke::new(1.0, c));
         }
@@ -784,7 +918,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
     let mut y = 0.0;
     while y <= d.height + 1e-6 {
         let is_major = (y / major).fract().abs() < 1e-9;
-        let c = if is_major { Some(crate::theme::p().grid_major) } else { minor_color };
+        let c = if is_major { Some(crate::theme::p().grid_major) } else { minor_color }.map(|c| grid_contrast(app, c));
         if let Some(c) = c {
             painter.line_segment([xf.to_screen([0.0, y]), xf.to_screen([d.width, y])], Stroke::new(1.0, c));
         }
@@ -822,13 +956,27 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
         }
         let selected = app.selection.contains(&s.id);
         let col = display_color(s.layer);
-        let stroke = Stroke::new(if selected { 1.5 } else { 1.0 }, col);
+        // "Disegno a DPI elevato": hairlines half as thick, for finer detail
+        let thin = if app.prefs.high_dpi_workspace { 0.5 } else { 1.0 };
+        let stroke = Stroke::new(if selected { 1.5 } else { 1.0 } * thin, col);
         let paths = s.world_paths();
         if matches!(s.geom, Geometry::Image { .. }) && !selected {
             continue;
         }
+        // "Rendering riempito": closed shapes drawn filled with their layer's colour
+        if app.prefs.filled_rendering {
+            fill_paths(&painter, &xf, &paths, col.gamma_multiply(0.35), area);
+        }
         for pl in &paths {
             draw_polyline(&painter, &xf, pl, stroke, selected);
+        }
+    }
+    // "Mostra cursore linea a schermo intero": a cross through the pointer across the canvas
+    if app.prefs.fullscreen_line_cursor {
+        if let Some(h) = hover.filter(|h| area.contains(*h)) {
+            let st = Stroke::new(1.0, crate::theme::p().text_dim);
+            painter.line_segment([pos2(area.left(), h.y), pos2(area.right(), h.y)], st);
+            painter.line_segment([pos2(h.x, area.top()), pos2(h.x, area.bottom())], st);
         }
     }
 
@@ -869,7 +1017,7 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
                 draw_rotate_arrow(&painter, c, rotate_handle_pos(c, mid));
                 continue;
             }
-            let hr = Rect::from_center_size(c, vec2(7.0, 7.0));
+            let hr = Rect::from_center_size(c, Vec2::splat(handle_px(app)));
             painter.rect_filled(hr, 1.0, crate::theme::ACCENT);
             painter.rect_stroke(hr, 1.0, Stroke::new(1.0, Color32::WHITE), StrokeKind::Inside);
         }

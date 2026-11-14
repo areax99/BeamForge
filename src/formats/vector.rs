@@ -257,14 +257,21 @@ pub fn dxf(bytes: &[u8]) -> Result<Vec<Piece>, String> {
         }
         i += 1;
     }
-    let mut unit = 1.0;
+    let mut insunits: Option<i32> = None;
     if let Some(h) = sections.get("HEADER") {
         for w in h.windows(2) {
             if w[0].0 == 9 && w[0].1.trim() == "$INSUNITS" && w[1].0 == 70 {
-                unit = dxf_unit(w[1].1.trim().parse().unwrap_or(0));
+                insunits = w[1].1.trim().parse().ok();
             }
         }
     }
+    // Impostazioni > Importa/Esporta: "Rileva automaticamente le unità" reads $INSUNITS; a file
+    // without one, or with detection off, uses the unit picked there (Millimetri by default)
+    let (auto, fallback) = crate::prefs::with(|p| (p.dxf_auto_units, p.dxf_unit.mm()));
+    let unit = match insunits {
+        Some(u) if auto && u != 0 => dxf_unit(u),
+        _ => fallback,
+    };
     // layer colours (TABLES / LAYER, code 62)
     let mut layer_colors: HashMap<String, i32> = HashMap::new();
     if let Some(t) = sections.get("TABLES") {
@@ -451,7 +458,27 @@ impl DxfCtx<'_> {
                         }
                     }
                 }
+                // text is drawn with the default font unless "Ignora oggetti di testo" is on
+                "TEXT" | "MTEXT" if !crate::prefs::with(|p| p.dxf_ignore_text) => {
+                    let raw = e.s(1).unwrap_or("");
+                    let text = if e.kind == "MTEXT" { mtext_plain(raw) } else { raw.to_string() };
+                    let h = e.fd(40, 2.5).abs().max(0.01);
+                    let rot = e.fd(50, 0.0).to_radians();
+                    let at = [e.fd(10, 0.0), e.fd(20, 0.0)];
+                    paths.extend(dxf_text(&text, h, rot, at).into_iter().map(|p| Polyline { pts: p.pts.into_iter().map(t).collect(), closed: p.closed }));
+                }
                 _ => {}
+            }
+            // "Chiudi automaticamente tolleranza (mm)": an outline whose ends meet this closely is closed
+            let close_tol = crate::prefs::with(|p| p.dxf_close_tolerance);
+            for p in paths.iter_mut() {
+                if !p.closed && p.pts.len() > 2 {
+                    let (a, b) = (p.pts[0], p.pts[p.pts.len() - 1]);
+                    if ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt() <= close_tol {
+                        p.pts.pop();
+                        p.closed = true;
+                    }
+                }
             }
             if !paths.is_empty() {
                 let layer = self.order.layer(aci);
@@ -460,6 +487,57 @@ impl DxfCtx<'_> {
             k += 1;
         }
     }
+}
+
+/// MTEXT without its formatting: \P breaks the line, \~ is a space, other \codes and braces go.
+fn mtext_plain(s: &str) -> String {
+    let mut out = String::new();
+    let mut it = s.chars().peekable();
+    while let Some(c) = it.next() {
+        match c {
+            '{' | '}' => {}
+            '\\' => match it.next() {
+                Some('P') => out.push('\n'),
+                Some('~') => out.push(' '),
+                Some('\\') => out.push('\\'),
+                // codes with an argument run to the next ';'
+                Some('f' | 'F' | 'H' | 'W' | 'Q' | 'T' | 'A' | 'C' | 'c' | 'p') => {
+                    for d in it.by_ref() {
+                        if d == ';' {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            },
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// A DXF text's outlines in drawing units: the default font at height `h`, its lower-left corner
+/// at `at`, turned by `rot` radians.
+fn dxf_text(text: &str, h: f64, rot: f64, at: P) -> Vec<Polyline> {
+    let font = crate::prefs::with(|p| p.default_font.clone());
+    let font = if font.is_empty() { crate::text::fonts()[0].name.clone() } else { font };
+    let paths = crate::text::text_outline(text, h, &font);
+    let (mut mx, mut my) = (f64::INFINITY, f64::INFINITY);
+    for q in paths.iter().flat_map(|p| p.pts.iter()) {
+        mx = mx.min(q[0]);
+        my = my.min(q[1]);
+    }
+    let (c, s) = (rot.cos(), rot.sin());
+    paths
+        .into_iter()
+        .map(|p| Polyline {
+            pts: p.pts.iter().map(|q| {
+                let (x, y) = (q[0] - mx, q[1] - my);
+                [at[0] + c * x - s * y, at[1] + s * x + c * y]
+            }).collect(),
+            closed: p.closed,
+        })
+        .collect()
 }
 
 trait TapClosed {
@@ -490,14 +568,19 @@ fn poly_with_bulges(verts: &[(P, f64)], closed: bool, xf: &Xf) -> Polyline {
 
 // ---------------------------------------------------------------- HPGL
 
-/// Plotter units for PU/PD/PA/PR (HPGLTranslator::Import 0x1000ac1f4, constant 0x3cd013aa).
+/// Plotter units for PU/PD/PA/PR (HPGLTranslator::Import 0x1000ac1f4, constant 0x3cd013aa): the
+/// 1"/1000 choice. The units now follow Impostazioni > Importa/Esporta (1"/1016 by default).
+#[allow(dead_code)]
 pub const HPGL_UNIT_MM: f64 = 0.0254;
 /// AA arc centres are read as 1016 per inch (÷1016 × 25.4, constants 0x447e0000 / 0x41cb3333).
+#[allow(dead_code)]
 pub const HPGL_ARC_UNIT_MM: f64 = 25.4 / 1016.0;
 /// A finished outline closes when its ends are this close (PathShape::Close(0.001)).
 pub const HPGL_CLOSE_TOL: f64 = 0.001;
 
 pub fn hpgl(bytes: &[u8]) -> Result<Vec<Piece>, String> {
+    // "Precisione importazione da formato HPGL/PLT": plotter units of 1/1016" (default) or 1/1000"
+    let unit = crate::prefs::with(|p| 25.4 / p.hpgl_units.max(1) as f64);
     let text = String::from_utf8_lossy(bytes);
     let mut pieces: Vec<Piece> = Vec::new();
     let mut layer = 0usize;
@@ -539,7 +622,7 @@ pub fn hpgl(bytes: &[u8]) -> Result<Vec<Piece>, String> {
                 down = true;
             }
             for xy in nums.chunks(2).filter(|c| c.len() == 2) {
-                let p = [xy[0] * HPGL_UNIT_MM, xy[1] * HPGL_UNIT_MM];
+                let p = [xy[0] * unit, xy[1] * unit];
                 let next = if absolute { p } else { [pos[0] + p[0], pos[1] + p[1]] };
                 if down {
                     if cur.is_empty() {
@@ -551,11 +634,11 @@ pub fn hpgl(bytes: &[u8]) -> Result<Vec<Piece>, String> {
             }
         } else if op == "CI" {
             if let Some(r) = nums.first() {
-                pieces.push(Piece { layer, paths: vec![circle(pos, r * HPGL_UNIT_MM)] });
+                pieces.push(Piece { layer, paths: vec![circle(pos, r * unit)] });
             }
         } else if op == "AA" || op == "AR" {
             if nums.len() >= 3 {
-                let c = if op == "AA" { [nums[0] * HPGL_ARC_UNIT_MM, nums[1] * HPGL_ARC_UNIT_MM] } else { [pos[0] + nums[0] * HPGL_ARC_UNIT_MM, pos[1] + nums[1] * HPGL_ARC_UNIT_MM] };
+                let c = if op == "AA" { [nums[0] * unit, nums[1] * unit] } else { [pos[0] + nums[0] * unit, pos[1] + nums[1] * unit] };
                 let r = ((pos[0] - c[0]).powi(2) + (pos[1] - c[1]).powi(2)).sqrt();
                 let a0 = (pos[1] - c[1]).atan2(pos[0] - c[0]);
                 let a1 = a0 + nums[2].to_radians();
@@ -778,7 +861,8 @@ mod tests {
         assert_eq!(p.len(), 1);
         let pl = &p[0].paths[0];
         assert!(pl.closed);
-        assert!((pl.pts[1][0] - 25.4).abs() < 1e-9);
+        // 1000 plotter units at the default 1"/1016 (Impostazioni > Importa/Esporta)
+        assert!((pl.pts[1][0] - 1000.0 * 25.4 / 1016.0).abs() < 1e-9);
     }
 
     #[test]

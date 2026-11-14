@@ -8,6 +8,39 @@ use crate::model::*;
 use crate::theme::{self, ACCENT};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 
+/// "Unità di controllo" of the laser in use (device settings): speeds shown in mm/s instead of
+/// mm/min. Set by the app each frame; speeds are always kept in mm/min inside.
+pub static SPEED_MM_S: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn speed_mm_s() -> bool {
+    SPEED_MM_S.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// "Velocità (mm/min)" or "Velocità (mm/s)", as the laser's control units say.
+pub fn speed_label() -> &'static str {
+    if speed_mm_s() { tr("Velocità (mm/s)") } else { tr("Velocità (mm/min)") }
+}
+
+/// A speed shown in the laser's control units; `v` stays in mm/min.
+pub fn speed_value(v: f64) -> f64 {
+    if speed_mm_s() { v / 60.0 } else { v }
+}
+
+/// An editable speed in the laser's control units; `v` stays in mm/min.
+pub fn speed_field(ui: &mut egui::Ui, v: &mut f64, decimals: usize, width: Option<f32>) -> egui::Response {
+    let k = if speed_mm_s() { 60.0 } else { 1.0 };
+    let mut shown = *v / k;
+    let dv = crate::i18n::dv(&mut shown).speed(10.0 / k).range(0.1 / k..=60000.0 / k).min_decimals(decimals).max_decimals(decimals.max(2));
+    let r = match width {
+        Some(w) => ui.add_sized(vec2(w, 20.0), dv),
+        None => ui.add(dv),
+    };
+    if r.changed() {
+        *v = shown * k;
+    }
+    r
+}
+
 pub fn mode_it(m: CutMode) -> &'static str {
     match m {
         CutMode::Line => tr("Linea"),
@@ -553,18 +586,23 @@ enum TbIcon {
 }
 
 const TB_ICON_STROKE: f32 = 1.4;
+/// Icon scale for each "Dimensione icone" step: Piccola, Normale (the original size), Grande, Più grande, Enorme.
+const TB_ICON_SCALES: [f32; 5] = [0.85, 1.0, 1.2, 1.4, 1.6];
 
 /// White outline icons drawn with thin strokes and filled folded corners.
 fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
-    let (rect, resp) = ui.allocate_exact_size(vec2(30.0, 28.0), Sense::click());
+    // "Dimensione icone nella barra degli strumenti" (Impostazioni > Schermo): the whole icon,
+    // its button and its line width grow together
+    let k = TB_ICON_SCALES[crate::prefs::with(|p| p.toolbar_icon_size as usize).min(TB_ICON_SCALES.len() - 1)];
+    let (rect, resp) = ui.allocate_exact_size(vec2(30.0, 28.0) * k, Sense::click());
     let p = ui.painter();
     if resp.hovered() {
         p.rect_filled(rect, 4.0, crate::theme::p().btn_hover);
     }
     let c = rect.center();
     let fg = if resp.is_pointer_button_down_on() { crate::theme::p().text_dim } else { crate::theme::p().ink };
-    let st = Stroke::new(TB_ICON_STROKE, fg);
-    let q = |x: f32, y: f32| pos2(c.x + x, c.y + y);
+    let st = Stroke::new(TB_ICON_STROKE * k, fg);
+    let q = |x: f32, y: f32| pos2(c.x + x * k, c.y + y * k);
     let path = |pts: &[[f32; 2]], closed: bool| {
         let v: Vec<Pos2> = pts.iter().map(|a| q(a[0], a[1])).collect();
         if closed {
@@ -631,8 +669,8 @@ fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
             arrow_head([-7.0 * m, 6.0], [0.0, 1.0]);
         }
         TbIcon::Cut => {
-            p.circle_stroke(q(-4.5, 6.0), 3.0, st);
-            p.circle_stroke(q(4.5, 6.0), 3.0, st);
+            p.circle_stroke(q(-4.5, 6.0), 3.0 * k, st);
+            p.circle_stroke(q(4.5, 6.0), 3.0 * k, st);
             seg([-2.8, 3.5], [5.0, -9.0]);
             seg([2.8, 3.5], [-5.0, -9.0]);
         }
@@ -660,7 +698,7 @@ fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
             rrect(-4.0, -4.0, 4.0, 4.0);
         }
         TbIcon::ZoomIn | TbIcon::ZoomOut => {
-            p.circle_stroke(q(-2.0, -2.0), 6.5, st);
+            p.circle_stroke(q(-2.0, -2.0), 6.5 * k, st);
             p.line_segment([q(2.8, 2.8), q(9.0, 9.0)], st);
             seg([-5.0, -2.0], [1.0, -2.0]);
             if matches!(icon, TbIcon::ZoomIn) {
@@ -672,10 +710,10 @@ fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
             let bot = arc(0.0, -7.0, 13.0, PI * 0.22, PI * 0.78);
             p.add(egui::Shape::line(top, st));
             p.add(egui::Shape::line(bot, st));
-            p.circle_filled(c, 3.2, fg);
+            p.circle_filled(c, 3.2 * k, fg);
         }
         TbIcon::Device => {
-            p.circle_stroke(c, 3.0, st);
+            p.circle_stroke(c, 3.0 * k, st);
             let ring = arc(0.0, 0.0, 6.5, 0.0, PI * 2.0);
             p.add(egui::Shape::closed_line(ring, st));
             for k in 0..8 {
@@ -685,7 +723,7 @@ fn tb(ui: &mut egui::Ui, icon: TbIcon, tip: &str) -> bool {
         }
         TbIcon::Center => {
             rrect(-9.0, -9.0, 9.0, 9.0);
-            p.circle_stroke(c, 3.5, st);
+            p.circle_stroke(c, 3.5 * k, st);
             seg([0.0, -9.0], [0.0, -5.5]);
             seg([0.0, 9.0], [0.0, 5.5]);
             seg([-9.0, 0.0], [-5.5, 0.0]);
@@ -1034,6 +1072,18 @@ pub fn status_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
             let pos = app.cursor_world.map(|p| format!("x: {:.2}  y: {:.2} mm", p[0], p[1])).unwrap_or_else(|| "x: –  y: – mm".into());
             ui.label(egui::RichText::new(pos).monospace().color(crate::theme::p().text_dim));
             ui.separator();
+            // the original's Sposta / Dimensione / Ruota switches: what the mouse may do to a selection
+            let before = app.edit_switches;
+            for (i, l) in [tr("Sposta"), tr("Dimensione"), tr("Ruota")].into_iter().enumerate() {
+                switch(ui, &mut app.edit_switches[i], l);
+            }
+            if app.edit_switches != before && app.prefs.save_move_rotate_scale_switches {
+                // "Salva lo stato degli interruttori Sposta / Ruota / Scala"
+                app.prefs.saved_switches = Some(app.edit_switches);
+                crate::prefs::set_current(&app.prefs);
+                app.prefs.save();
+            }
+            ui.separator();
             ui.label(egui::RichText::new(trf("{} forme · {} selezionate", &[&app.doc.shapes.len(), &app.selection.len()])).color(crate::theme::p().text_dim));
             ui.separator();
             ui.label(&app.status);
@@ -1063,7 +1113,10 @@ pub fn palette_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
                 }
                 let lum = 0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32;
                 let tc = if lum > 140.0 { Color32::BLACK } else { Color32::WHITE };
-                p.text(rect.center(), egui::Align2::CENTER_CENTER, if i < CUT_LAYER_COUNT { format!("{:02}", i) } else { layer_name(i) }, egui::FontId::proportional(13.0), tc);
+                // "Mostra etichette pulsanti tavolozza" (Impostazioni > Schermo)
+                if app.prefs.palette_labels {
+                    p.text(rect.center(), egui::Align2::CENTER_CENTER, if i < CUT_LAYER_COUNT { format!("{:02}", i) } else { layer_name(i) }, egui::FontId::proportional(13.0), tc);
+                }
                 let resp = resp.on_hover_text(if is_tool_layer(i) { tr("Livello strumento (non viene inciso)") } else { tr("Assegna il livello alle forme selezionate") });
                 if resp.clicked() {
                     app.set_layer_of_selection(i);
@@ -1602,6 +1655,10 @@ pub fn tool_bar(app: &mut BeamForge, ui: &mut egui::Ui) {
             if gated(app, ui, "rot_cw", |ui| small_icon(ui, "⟳", tr("Ruota 90° in senso orario"))) {
                 app.rotate_sel(-90.0);
             }
+            // "Modalità principiante": the alignment buttons stay hidden
+            if app.prefs.beginner_mode {
+                return;
+            }
             ui.separator();
             if gated(app, ui, "align_0", |ui| small_icon(ui, "⇤", tr("Allinea a sinistra"))) {
                 app.align(0);
@@ -1668,7 +1725,15 @@ pub fn right_panel(app: &mut BeamForge, ui: &mut egui::Ui) {
         });
         egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
             ui.horizontal(|ui| {
+                // "Modalità principiante": the Console tab stays hidden
+                let beginner = app.prefs.beginner_mode;
+                if beginner && app.right_tab == RightTab::Console {
+                    app.right_tab = RightTab::Laser;
+                }
                 for (t, l) in [(RightTab::Laser, tr("Laser")), (RightTab::Move, tr("Sposta")), (RightTab::Console, tr("Console")), (RightTab::Shape, tr("Forma"))] {
+                    if beginner && t == RightTab::Console {
+                        continue;
+                    }
                     ui.selectable_value(&mut app.right_tab, t, l);
                 }
             });
@@ -1729,7 +1794,7 @@ fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
                         })
                         .spacing(vec2(12.0, 4.0))
                         .show(ui, |ui| {
-                        for h in ["#", tr("Livello"), tr("Modalità"), tr("Vel./Pot. (mm/min / %)"), tr("Risultato"), tr("Mostra"), tr("Aria")] {
+                        for h in ["#", tr("Livello"), tr("Modalità"), if speed_mm_s() { tr("Vel./Pot. (mm/s / %)") } else { tr("Vel./Pot. (mm/min / %)") }, tr("Risultato"), tr("Mostra"), tr("Aria")] {
                             ui.label(egui::RichText::new(h).color(crate::theme::p().text_dim).strong());
                         }
                         ui.end_row();
@@ -1745,7 +1810,7 @@ fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
                             ui.painter().rect_filled(rect, 3.0, layer_color(l));
                             let cs = &app.doc.layers[l];
                             let r3 = cell(ui, mode_it(cs.mode).to_string());
-                            let r4 = cell(ui, format!("{:.0} / {:.0}", cs.speed, cs.max_power));
+                            let r4 = cell(ui, format!("{:.0} / {:.0}", speed_value(cs.speed), cs.max_power));
                             let (mut o, mut s, mut a) = (cs.output, cs.show, cs.air);
                             let mut ch = false;
                             ch |= switch(ui, &mut o, "").changed();
@@ -1809,8 +1874,8 @@ fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
             ui.label(tr("Colore livello"));
             let (rect, _) = ui.allocate_exact_size(vec2(90.0, 18.0), Sense::hover());
             ui.painter().rect_filled(rect, 3.0, layer_color(l));
-            ui.label(tr("Velocità (mm/min)"));
-            changed |= ui.add(crate::i18n::dv(&mut cs.speed).speed(10.0).range(0.1..=60000.0).max_decimals(2)).changed();
+            ui.label(speed_label());
+            changed |= speed_field(ui, &mut cs.speed, 0, None).changed();
             ui.end_row();
             ui.label(tr("Numero passaggi"));
             changed |= ui.add(crate::i18n::dv(&mut cs.passes).range(1..=100)).changed();
@@ -1851,7 +1916,7 @@ fn quick_edit_disabled(ui: &mut egui::Ui) {
             let mut iv = 0.1;
             ui.label(tr("Colore livello"));
             ui.label("");
-            ui.label(tr("Velocità (mm/min)"));
+            ui.label(speed_label());
             ui.add(crate::i18n::dv(&mut z));
             ui.end_row();
             ui.label(tr("Numero passaggi"));
@@ -1910,6 +1975,15 @@ fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         if always(app, ui, "start", |ui| big_button(ui, tr("Avvia"), Some(Color32::from_rgb(170, 70, 20)), w)) {
             app.start_job();
+            // "Non lasciare che il pulsante Start mantenga il focus sulla tastiera": a later
+            // Space or Enter must not start the job again
+            if app.prefs.start_button_no_focus {
+                ui.memory_mut(|m| {
+                    if let Some(id) = m.focused() {
+                        m.surrender_focus(id);
+                    }
+                });
+            }
         }
         let pause_label = if app.paused { tr("Riprendi") } else { tr("Pausa") };
         if always(app, ui, "pause", |ui| big_button(ui, pause_label, None, w)) && app.can("pause") {
@@ -1972,6 +2046,10 @@ fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
         ui.end_row();
     });
     switch(ui, &mut app.job_opts.selected_only, tr("Taglia la grafica selezionata"));
+    // the original's "Usa origine selezione": the job origin from the selection's box
+    ui.add_enabled_ui(app.job_opts.start_from != StartFrom::AbsoluteCoords, |ui| {
+        switch(ui, &mut app.job_opts.selection_origin, tr("Usa origine selezione"));
+    });
     switch(ui, &mut app.job_opts.optimize, tr("Ottimizza il percorso (interni prima, percorso più breve)"));
     ui.add_space(8.0);
     ui.horizontal(|ui| {
@@ -2486,7 +2564,7 @@ fn paint_switch(p: &egui::Painter, rect: Rect, on: bool, enabled: bool) {
 
 /// One size for every green/red switch in every window (the person's request: all the coloured
 /// switches the same size), tall enough to read at a glance and still within a normal row.
-pub const SWITCH_SIZE: egui::Vec2 = egui::Vec2::new(34.0, 18.0);
+pub const SWITCH_SIZE: egui::Vec2 = egui::Vec2::new(30.0, 16.0);
 
 /// Green when on, red when off, without a label.
 fn pill_toggle(ui: &mut egui::Ui, on: &mut bool) -> bool {
@@ -2560,9 +2638,9 @@ fn image_settings(ui: &mut egui::Ui, cs: &mut CutSetting, layer: usize, art: Lay
                 ui.label(tr("Risultato"));
             });
             egui::Grid::new("image_head").num_columns(2).spacing(vec2(10.0, 4.0)).show(ui, |ui| {
-                right_label(ui, tr("Velocità (mm/min)"));
+                right_label(ui, speed_label());
                 ui.horizontal(|ui| {
-                    changed |= ui.add_sized(vec2(88.0, 20.0), dv(&mut cs.speed).speed(10.0).range(0.1..=60000.0).min_decimals(1).max_decimals(1)).changed();
+                    changed |= speed_field(ui, &mut cs.speed, 1, Some(88.0)).changed();
                     ui.add_space(8.0);
                     changed |= pill_toggle(ui, &mut cs.air);
                     ui.label(tr("Air assist"));
@@ -2811,8 +2889,8 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                 ui.label(tr("Modalità"));
                 changed |= mode_combo(ui, "ed_mode", &mut cs, art, None);
                 ui.end_row();
-                ui.label(tr("Velocità (mm/min)"));
-                changed |= ui.add(dv(&mut cs.speed).speed(10.0).range(0.1..=60000.0)).changed();
+                ui.label(speed_label());
+                changed |= speed_field(ui, &mut cs.speed, 0, None).changed();
                 ui.end_row();
                 ui.label(tr("Potenza massima (%)"));
                 changed |= ui.add(dv(&mut cs.max_power).speed(0.5).range(0.0..=100.0)).changed();
@@ -2838,10 +2916,15 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                 ui.end_row();
             });
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut tab, 0, tr("Comune"));
-                ui.selectable_value(&mut tab, 1, tr("Avanzate"));
-            });
+            // "Modalità principiante": only the Comune page
+            if app.prefs.beginner_mode {
+                tab = 0;
+            } else {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut tab, 0, tr("Comune"));
+                    ui.selectable_value(&mut tab, 1, tr("Avanzate"));
+                });
+            }
             ui.separator();
             let line = cs.mode == CutMode::Line;
             if matches!(cs.mode, CutMode::Fill | CutMode::OffsetFill) {
@@ -3117,98 +3200,12 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
         }
     }
 
-    // Device settings work on a draft: OK applies, Annulla or ✕ throws it away
-    // (MainWindow::on_actionDevice_Settings_triggered 0x100688400: QDialog::exec, applied on accept).
-    if app.show_device {
-        let mut open = true;
-        let mut d = app.device_draft.take().unwrap_or_else(|| app.doc.device.clone());
-        let mut ok = false;
-        let mut cancel = false;
-        theme::centered(ctx, "device", egui::Window::new(tr("Impostazioni dispositivo")).open(&mut open).resizable(false).collapsible(false)).show(ctx, |ui| {
-            egui::Grid::new("device").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                ui.label(tr("Nome"));
-                ui.text_edit_singleline(&mut d.name);
-                ui.end_row();
-                ui.label(tr("Larghezza area (mm)"));
-                ui.add(crate::i18n::dv(&mut d.width).speed(1.0).range(10.0..=15000.0));
-                ui.end_row();
-                ui.label(tr("Altezza area (mm)"));
-                ui.add(crate::i18n::dv(&mut d.height).speed(1.0).range(10.0..=15000.0));
-                ui.end_row();
-                let names = [
-                    (OriginCorner::FrontLeft, tr("Anteriore sinistra")),
-                    (OriginCorner::RearLeft, tr("Posteriore sinistra")),
-                    (OriginCorner::FrontRight, tr("Anteriore destra")),
-                    (OriginCorner::RearRight, tr("Posteriore destra")),
-                ];
-                ui.label(tr("Origine macchina"));
-                let cur = names.iter().find(|n| n.0 == d.origin).map(|n| n.1).unwrap_or("");
-                egui::ComboBox::from_id_salt("origin").selected_text(cur).show_ui(ui, |ui| {
-                    for (o, n) in names {
-                        ui.selectable_value(&mut d.origin, o, n);
-                    }
-                });
-                ui.end_row();
-                ui.label(tr("Valore S massimo ($30)"));
-                ui.add(crate::i18n::dv(&mut d.s_max).speed(10.0).range(1.0..=100000.0));
-                ui.end_row();
-                ui.label(tr("Potenza dinamica"));
-                switch(ui, &mut d.dynamic_power, tr("M4 (spenta: M3 potenza costante)"));
-                ui.end_row();
-                ui.label(tr("Aria compressa"));
-                switch(ui, &mut d.air_assist_m7, tr("Usa M7 invece di M8"));
-                ui.end_row();
-                ui.label(tr("Potenza Fuoco (%)"));
-                ui.add(crate::i18n::dv(&mut d.fire_power).speed(0.1).range(0.0..=100.0));
-                ui.end_row();
-                ui.label(tr("Inquadra con laser acceso"));
-                switch(ui, &mut d.laser_frame, tr("Raggio continuo all'1%"));
-                ui.end_row();
-                ui.label(tr("Velocità rapidi (mm/s)"));
-                ui.add(crate::i18n::dv(&mut d.rapid_speed).speed(1.0).range(1.0..=2000.0));
-                ui.end_row();
-                ui.label(tr("Accelerazione (mm/s²)"));
-                ui.add(crate::i18n::dv(&mut d.accel).speed(10.0).range(10.0..=50000.0));
-                ui.end_row();
-                ui.label(tr("Baud"));
-                egui::ComboBox::from_id_salt("baud").selected_text(d.baud.to_string()).show_ui(ui, |ui| {
-                    for b in [9600u32, 57600, 115200, 230400, 250000] {
-                        ui.selectable_value(&mut d.baud, b, b.to_string());
-                    }
-                });
-                ui.end_row();
-            });
-            ui.separator();
-            ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(tr("OK")).fill(Color32::from_rgb(170, 70, 20)).min_size(vec2(90.0, 26.0))).clicked() {
-                    ok = true;
-                }
-                if ui.add(egui::Button::new(crate::i18n::cancel()).min_size(vec2(90.0, 26.0))).clicked() {
-                    cancel = true;
-                }
-            });
-        });
-        if ok {
-            if d.width != app.doc.device.width || d.height != app.doc.device.height {
-                app.view.fit_pending = true;
-            }
-            app.checkpoint_now();
-            // keep the saved laser in Periferiche in step with its settings
-            if let Some(slot) = app.device_sel.and_then(|i| app.device_list.devices.get_mut(i)) {
-                *slot = d.clone();
-                app.device_list.save();
-            }
-            app.doc.device = d;
-            app.show_device = false;
-        } else if cancel || !open {
-            app.show_device = false;
-        } else {
-            app.device_draft = Some(d);
-        }
-    }
+    // Impostazioni della periferica: the original's four tabs (device_ui.rs)
+    crate::device_ui::window(app, ctx);
 
     // Impostazioni: the original's six tabs (settings_ui.rs)
     crate::settings_ui::window(app, ctx);
+    crate::settings_ui::text_edit_window(app, ctx);
 
     if app.show_about {
         let mut open = true;

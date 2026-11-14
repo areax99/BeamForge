@@ -88,8 +88,10 @@ impl ttf_parser::OutlineBuilder for Builder {
         let c = self.pt(x1, y1);
         let e = self.pt(x, y);
         let s = self.last;
-        for i in 1..=8 {
-            let t = i as f64 / 8.0;
+        // "Qualità della curva" (Impostazioni > Schermo): pieces per curve
+        let n = crate::prefs::curve_segments(8);
+        for i in 1..=n {
+            let t = i as f64 / n as f64;
             let u = 1.0 - t;
             self.cur.push([u * u * s[0] + 2.0 * u * t * c[0] + t * t * e[0], u * u * s[1] + 2.0 * u * t * c[1] + t * t * e[1]]);
         }
@@ -100,8 +102,9 @@ impl ttf_parser::OutlineBuilder for Builder {
         let c2 = self.pt(x2, y2);
         let e = self.pt(x, y);
         let s = self.last;
-        for i in 1..=10 {
-            let t = i as f64 / 10.0;
+        let n = crate::prefs::curve_segments(10);
+        for i in 1..=n {
+            let t = i as f64 / n as f64;
             let u = 1.0 - t;
             let a = u * u * u;
             let b = 3.0 * u * u * t;
@@ -141,6 +144,11 @@ fn merge_glyph(paths: &mut Vec<Polyline>, first: usize) {
     }
 }
 
+/// Letters of the scripts written right to left.
+fn is_rtl(c: char) -> bool {
+    matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF)
+}
+
 /// Build outlines (mm, Y up) centred on the origin. `size` is the cap height-ish em size in mm.
 pub fn text_outline(text: &str, size: f64, font_name: &str) -> Vec<Polyline> {
     let list = fonts();
@@ -150,10 +158,15 @@ pub fn text_outline(text: &str, size: f64, font_name: &str) -> Vec<Polyline> {
     let scale = size / upem;
     let line_h = (face.ascender() as f64 - face.descender() as f64 + face.line_gap() as f64) * scale;
     let mut b = Builder { paths: Vec::new(), cur: Vec::new(), last: [0.0, 0.0], scale, ox: 0.0, oy: 0.0 };
+    let rtl = crate::prefs::with(|p| p.right_to_left_text);
     for (li, line) in text.split('\n').enumerate() {
         let mut x = 0.0;
         let y = -(li as f64) * line_h;
-        for ch in line.chars() {
+        // "Abilita il supporto del testo da destra a sinistra": a line written in a right-to-left
+        // script (Hebrew, Arabic, Syriac, Thaana...) is laid out from its last letter, so it reads
+        // right to left
+        let chars: Vec<char> = if rtl && line.chars().any(is_rtl) { line.chars().rev().collect() } else { line.chars().collect() };
+        for ch in chars {
             let Some(gid) = face.glyph_index(ch) else {
                 x += size * 0.5;
                 continue;

@@ -37,6 +37,21 @@ pub enum DxfUnit {
     Feet,
 }
 
+impl DxfUnit {
+    /// mm per drawing unit.
+    pub fn mm(self) -> f64 {
+        match self {
+            DxfUnit::Millimeters => 1.0,
+            DxfUnit::Centimeters => 10.0,
+            DxfUnit::Meters => 1000.0,
+            DxfUnit::Kilometers => 1.0e6,
+            DxfUnit::Microns => 0.001,
+            DxfUnit::Inches => 25.4,
+            DxfUnit::Feet => 304.8,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct Prefs {
@@ -50,6 +65,8 @@ pub struct Prefs {
     pub default_use_selection_origin: bool,
     pub save_job_origin_in_project: bool,
     pub save_move_rotate_scale_switches: bool,
+    /// the Sposta / Dimensione / Ruota switches as last left, when they are saved
+    pub saved_switches: Option<[bool; 3]>,
     pub load_default_layer_settings: bool,
     pub select_after_drawing: bool,
     pub show_page_tabs: bool,
@@ -141,6 +158,7 @@ impl Default for Prefs {
             default_use_selection_origin: false,
             save_job_origin_in_project: false,
             save_move_rotate_scale_switches: false,
+            saved_switches: None,
             load_default_layer_settings: true,
             select_after_drawing: false,
             show_page_tabs: true,
@@ -210,6 +228,33 @@ impl Default for Prefs {
 }
 
 const FILE: &str = "prefs.json";
+
+/// The settings in force, readable from anywhere (importers, the job planner, drawing), so
+/// they need not be passed through every call. The app sets them at start and on OK.
+static CURRENT: std::sync::RwLock<Option<Prefs>> = std::sync::RwLock::new(None);
+
+/// Make `p` the settings in force.
+pub fn set_current(p: &Prefs) {
+    *CURRENT.write().unwrap() = Some(p.clone());
+}
+
+/// "Qualità della curva" (Bassa … Massima) and "Disegno a DPI elevato": how many straight pieces
+/// a curve is drawn with, from `base` (the count at Alta, the default).
+pub fn curve_segments(base: usize) -> usize {
+    const FACTOR: [f64; 5] = [0.35, 0.6, 0.8, 1.0, 1.6];
+    let (q, hi) = with(|p| (p.curve_quality, p.high_dpi_workspace));
+    let f = FACTOR[(q as usize).min(4)] * if hi { 2.0 } else { 1.0 };
+    ((base as f64 * f).round() as usize).max(3)
+}
+
+/// Read one thing from the settings in force (the defaults before the app sets them).
+pub fn with<R>(f: impl FnOnce(&Prefs) -> R) -> R {
+    let g = CURRENT.read().unwrap();
+    match g.as_ref() {
+        Some(p) => f(p),
+        None => f(&Prefs::default()),
+    }
+}
 
 impl Prefs {
     pub fn load() -> Self {

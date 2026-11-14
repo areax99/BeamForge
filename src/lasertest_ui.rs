@@ -71,8 +71,8 @@ fn interval_window(app: &mut BeamForge, ctx: &egui::Context) {
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
         egui::Grid::new("it_grid").num_columns(6).spacing(vec2(8.0, 8.0)).show(ui, |ui| {
             ui.label(tr("Velocità:"));
-            ui.add_sized(vec2(110.0, 22.0), dv(&mut t.speed).speed(10.0).range(1.0..=100000.0).max_decimals(0));
-            ui.label("mm/min");
+            crate::panels::speed_field(ui, &mut t.speed, 0, Some(110.0));
+            ui.label(if crate::panels::speed_value(60.0) == 1.0 { "mm/s" } else { "mm/min" });
             ui.label(tr("Intervallo min:"));
             ui.add_sized(vec2(80.0, 22.0), dv(&mut t.min_interval).speed(0.001).range(0.01..=5.0).min_decimals(2).max_decimals(3));
             ui.label("mm");
@@ -212,8 +212,8 @@ fn setting_editor(ui: &mut egui::Ui, id: &str, cs: &mut CutSetting) {
             }
         });
         ui.end_row();
-        ui.label(tr("Velocità (mm/min)"));
-        ui.add(dv(&mut cs.speed).speed(10.0).range(1.0..=100000.0));
+        ui.label(crate::panels::speed_label());
+        crate::panels::speed_field(ui, &mut cs.speed, 0, None);
         ui.end_row();
         ui.label(tr("Potenza massima (%)"));
         if ui.add(dv(&mut cs.max_power).speed(0.5).range(0.0..=100.0)).changed() {

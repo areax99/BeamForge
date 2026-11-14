@@ -80,6 +80,15 @@ pub fn load_json<T: serde::de::DeserializeOwned>(name: &str) -> Option<T> {
     settings_path().and_then(|p| std::fs::read_to_string(p.with_file_name(name)).ok()).and_then(|s| serde_json::from_str(&s).ok())
 }
 
+/// A file kept beside the settings (its folder is made when missing).
+pub fn settings_file(name: &str) -> Option<std::path::PathBuf> {
+    let p = settings_path()?;
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    Some(p.with_file_name(name))
+}
+
 pub fn save_json<T: serde::Serialize>(name: &str, value: &T) {
     let Some(p) = settings_path() else { return };
     if let Some(dir) = p.parent() {

@@ -499,7 +499,7 @@ fn read_pdf(b: &[u8]) -> Result<Vec<Piece>, String> {
         }
         _ => {}
     }
-    let mut ip = Interp { pdf: &pdf, pieces: Vec::new() };
+    let mut ip = Interp { pdf: &pdf, pieces: Vec::new(), off: hidden_layers(&pdf) };
     let origin = [media[0], media[1]];
     let base = [PT_MM, 0.0, 0.0, PT_MM, -origin[0] * PT_MM, -origin[1] * PT_MM];
     ip.run(&content, res.as_ref(), base, 0);
@@ -545,9 +545,45 @@ fn color(nums: &[f64]) -> Option<[u8; 3]> {
 struct Interp<'a> {
     pdf: &'a Pdf,
     pieces: Vec<Piece>,
+    /// Optional Content groups (layers) the file has turned off, by object number
+    off: std::collections::HashSet<u32>,
+}
+
+/// The layers (Optional Content groups) a PDF or Illustrator file has turned off: the /OFF list
+/// of /OCProperties /D. Empty when "Importa livelli nascosti da file IA" is on, so all are read.
+fn hidden_layers(pdf: &Pdf) -> std::collections::HashSet<u32> {
+    let mut off = std::collections::HashSet::new();
+    if crate::prefs::with(|p| p.import_hidden_ai_layers) {
+        return off;
+    }
+    for (o, _) in pdf.objs.values() {
+        let Some(ocp) = o.dict().and_then(|d| d.get("OCProperties")).map(|v| pdf.get(v)) else { continue };
+        let Some(d) = ocp.dict().and_then(|d| d.get("D")).map(|v| pdf.get(v)) else { continue };
+        if let Some(Obj::Arr(a)) = d.dict().and_then(|d| d.get("OFF")).map(|v| pdf.get(v)) {
+            for r in a {
+                if let Obj::Ref(n) = r {
+                    off.insert(*n);
+                }
+            }
+        }
+    }
+    off
 }
 
 impl Interp<'_> {
+    /// Whether the marked-content property `name` (in the resources' /Properties) is a layer
+    /// that is turned off.
+    fn is_off(&self, res: Option<&Obj>, name: &str) -> bool {
+        if self.off.is_empty() {
+            return false;
+        }
+        let props = res.and_then(|r| self.pdf.get(r).dict()).and_then(|d| d.get("Properties")).map(|p| self.pdf.get(p));
+        match props.and_then(|p| p.dict()).and_then(|d| d.get(name)) {
+            Some(Obj::Ref(n)) => self.off.contains(n),
+            _ => false,
+        }
+    }
+
     fn run(&mut self, content: &[u8], res: Option<&Obj>, ctm: M, depth: usize) {
         let mut gs = GState { ctm, stroke: [0; 3], fill: [0; 3] };
         let mut stack: Vec<GState> = Vec::new();
@@ -559,6 +595,7 @@ impl Interp<'_> {
         let mut start = [0.0, 0.0];
         let mut lx = Lexer { b: content, i: 0 };
         let mut clip_next = false;
+        let mut hidden: Vec<bool> = Vec::new();
         while let Some(o) = lx.obj() {
             match o {
                 Obj::Num(n) => {
@@ -634,6 +671,16 @@ impl Interp<'_> {
                             start = last;
                         }
                         "W" | "W*" => clip_next = true,
+                        // marked content: a hidden layer (Optional Content turned off in the file)
+                        // is skipped unless "Importa livelli nascosti da file IA" is on
+                        "BDC" => {
+                            let off = names.len() >= 2 && names[names.len() - 2] == "OC" && self.is_off(res, &names[names.len() - 1]);
+                            hidden.push(off);
+                        }
+                        "BMC" => hidden.push(false),
+                        "EMC" => {
+                            hidden.pop();
+                        }
                         "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" | "n" => {
                             if cur.len() > 1 {
                                 let closing = matches!(op.as_str(), "s" | "b" | "b*");
@@ -642,7 +689,7 @@ impl Interp<'_> {
                             }
                             cur.clear();
                             let paths = std::mem::take(&mut path);
-                            if op != "n" && !clip_next && !paths.is_empty() {
+                            if op != "n" && !clip_next && !paths.is_empty() && !hidden.iter().any(|h| *h) {
                                 let stroked = matches!(op.as_str(), "S" | "s" | "B" | "B*" | "b" | "b*");
                                 let c = if stroked { gs.stroke } else { gs.fill };
                                 let paths = if stroked { paths } else { paths.into_iter().map(|p| p.closed_anyway()).collect() };

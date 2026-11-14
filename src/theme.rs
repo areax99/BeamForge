@@ -256,20 +256,58 @@ pub fn bar_frame(fill: Color32) -> egui::Frame {
 
 /// Centre a dialog in the app window each time it opens (not only the first time):
 /// it may be dragged while open, but reopening puts it back in the middle.
+///
+/// The window is anchored by its top-left corner, not its centre (the person's request: a window
+/// neither moves nor changes size when options inside it are switched). With a centre anchor a
+/// window that grows by one row would move its title bar up by half a row; anchored at the top
+/// left, the title bar stays put and any growth only goes down and to the right. The centring is
+/// done once, from the window's known size, during the first frames after it opens.
 pub fn centered<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui::Window<'a> {
     let id = egui::Id::new(("bf_dialog_shown", key));
+    let opened_id = egui::Id::new(("bf_dialog_opened", key));
     let pass = ctx.cumulative_pass_nr();
     let last: Option<u64> = ctx.data(|d| d.get_temp(id));
     ctx.data_mut(|d| d.insert_temp(id, pass));
-    let w = w.pivot(egui::Align2::CENTER_CENTER);
     let just_opened = last.map_or(true, |p| p + 1 < pass);
-    let w = steady_size(ctx, key, w);
+    let frame = ctx.cumulative_frame_nr();
     if just_opened {
-        w.current_pos(ctx.content_rect().center())
+        ctx.data_mut(|d| d.insert_temp(opened_id, frame));
+    }
+    let opened: u64 = ctx.data(|d| d.get_temp(opened_id)).unwrap_or(frame);
+    let w = w.pivot(egui::Align2::LEFT_TOP);
+    let (w, size) = steady_size(ctx, key, w);
+    let area = ctx.content_rect();
+    // BEAMFORGE_TRACE_WIN=1 (for testing): print where each dialog sits on every frame
+    if std::env::var_os("BEAMFORGE_TRACE_WIN").is_some()
+        && let Some(st) = egui::AreaState::load(ctx, egui::Id::new(("bf_win", key)))
+    {
+        println!("win {key} pass {pass} rect {:?} size {size:?} frame {frame} opened {opened}", st.rect());
+    }
+    let place = |size: egui::Vec2| {
+        let size = size.min(area.size());
+        let p = area.center() - size * 0.5;
+        egui::pos2(p.x.max(area.min.x), p.y.max(area.min.y))
+    };
+    // the first frames lay the window out and learn its real size: keep it centred on that size,
+    // then leave the position alone (only the person's dragging moves it). egui 0.37 puts a
+    // title-bar window back where its stored state says before `current_pos` can act, so the
+    // stored state itself is moved too.
+    if frame <= opened + CENTRE_PASSES {
+        let pos = place(size);
+        let win_id = egui::Id::new(("bf_win", key));
+        if let Some(mut st) = egui::AreaState::load(ctx, win_id) {
+            st.pivot = egui::Align2::LEFT_TOP;
+            st.pivot_pos = Some(pos);
+            ctx.memory_mut(|m| m.areas_mut().set_state(egui::LayerId::new(egui::Order::Middle, win_id), st));
+        }
+        w.current_pos(pos)
     } else {
-        w.default_pos(ctx.content_rect().center())
+        w.default_pos(place(size))
     }
 }
+
+/// Frames after opening during which a dialog is re-centred on its measured size.
+const CENTRE_PASSES: u64 = 3;
 
 /// Each dialog opens at its largest size, so nothing grows when options are switched (the person's
 /// request). Measured on macOS with the system font by running BeamForge through every state of
@@ -278,13 +316,14 @@ pub fn centered<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui
 /// language, font or system) is still remembered on top of these.
 const LARGEST_SIZES: &[(&str, [f32; 2])] = &[
     // all four modes × both tabs, tabs on and off
-    ("cut_editor", [516.0, 749.0]),
+    ("cut_editor", [556.0, 749.0]),
+    // Image page of the cut editor (scan switches, mode list, dither example)
+    ("image_editor", [834.0, 706.0]),
     // with each of the three inline editors open
     ("material_test", [966.0, 634.0]),
     ("interval_test", [491.0, 314.0]),
     // + the overlap warning line (≈ 24 pt)
     ("offset", [418.0, 312.0]),
-    ("settings", [340.0, 209.0]),
     ("device", [385.0, 458.0]),
     ("about", [459.0, 637.0]),
     ("devices", [626.0, 553.0]),
@@ -306,11 +345,12 @@ const STEADY_MAX_SCREEN_SHARE: f32 = 0.9;
 /// is already there, and one that goes leaves the window as it was. `min_size` is the outer size
 /// (title bar and margins included), the same thing the window's stored area size measures, so the
 /// remembered size and the drawn size settle on the same value.
-fn steady_size<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui::Window<'a> {
+fn steady_size<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> (egui::Window<'a>, egui::Vec2) {
     let id = egui::Id::new(("bf_win", key));
     let w = w.id(id);
+    let seen_now = egui::AreaState::load(ctx, id).and_then(|s| s.size).unwrap_or(egui::Vec2::ZERO);
     if FREE_SIZE_WINDOWS.contains(&key) {
-        return w;
+        return (w, seen_now);
     }
     let sizes = steady_sizes();
     let mut sizes = sizes.lock().unwrap();
@@ -327,8 +367,11 @@ fn steady_size<'a>(ctx: &egui::Context, key: &str, w: egui::Window<'a>) -> egui:
         }
     }
     match sizes.get(key) {
-        Some(s) => w.min_size(egui::vec2(s[0], s[1]).min(screen)),
-        None => w,
+        Some(s) => {
+            let min = egui::vec2(s[0], s[1]).min(screen);
+            (w.min_size(min), min.max(seen_now))
+        }
+        None => (w, seen_now),
     }
 }
 

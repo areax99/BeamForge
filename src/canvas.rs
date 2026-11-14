@@ -245,6 +245,10 @@ pub fn finish_line(app: &mut BeamForge, closed: bool) {
     app.checkpoint_now();
     let id = app.doc.add_shape(s);
     app.selection = vec![id];
+    // "Passa alla modalità Seleziona dopo aver disegnato una forma"
+    if app.prefs.select_after_drawing {
+        app.tool = Tool::Select;
+    }
 }
 
 /// The key that holds a dragged shape to a 1:1 box: only Option (Alt), as the person asked
@@ -361,9 +365,27 @@ pub fn segments(pts: &[Pos2], stroke: Stroke) -> Vec<egui::Shape> {
     pts.windows(2).map(|w| egui::Shape::line_segment([w[0], w[1]], stroke)).collect()
 }
 
-fn draw_image(app: &mut BeamForge, ctx: &egui::Context, painter: &egui::Painter, xf: &Xf, s: &Shape, alpha: u8) {
+/// What a picture's texture was made from: its pixels' size and its size on the page, so a
+/// picture changed in place gets a new texture. The workspace shows the picture as it is (the
+/// person's choice); the Anteprima shows it as it will be engraved.
+fn picture_key(s: &Shape) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    if let Geometry::Image { w, h: hh, px_w, px_h, .. } = &s.geom {
+        (w.to_bits(), hh.to_bits(), px_w, px_h).hash(&mut h);
+    }
+    h.finish()
+}
+
+fn draw_image(app: &mut BeamForge, ctx: &egui::Context, painter: &egui::Painter, xf: &Xf, index: usize, alpha: u8) {
+    let s = &app.doc.shapes[index];
     let Geometry::Image { w, h, px_w, px_h, gray } = &s.geom else { return };
+    let key = picture_key(s);
+    if app.texture_keys.get(&s.id) != Some(&key) {
+        app.textures.remove(&s.id);
+    }
     let tex = app.textures.entry(s.id).or_insert_with(|| {
+        app.texture_keys.insert(s.id, key);
         let img = egui::ColorImage::from_gray([*px_w as usize, *px_h as usize], gray);
         ctx.load_texture(format!("img{}", s.id), img, egui::TextureOptions::LINEAR)
     });
@@ -398,7 +420,9 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
         let (scroll, zoom_d) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta()));
         let mut factor = zoom_d;
         if scroll.y.abs() > 0.0 {
-            factor *= (scroll.y * 0.0025).exp();
+            // "Inverti il senso dello zoom della rotellina del mouse" (on by default, as before)
+            let dir = if app.prefs.invert_wheel_zoom { 1.0 } else { -1.0 };
+            factor *= (dir * scroll.y * 0.0025).exp();
         }
         if (factor - 1.0).abs() > 1e-4 {
             let before = xf.to_world(hp);
@@ -744,7 +768,8 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
     let ws = Rect::from_two_pos(xf.to_screen([0.0, 0.0]), xf.to_screen([d.width, d.height]));
     painter.rect_filled(ws, 0.0, crate::theme::p().canvas_ws);
     // grid
-    let step = nice_step(app.view.zoom).max(10.0);
+    // "Visualizza spaziatura griglia" (Impostazioni > Unità e Griglie) is the finest step shown
+    let step = nice_step(app.view.zoom).max(app.prefs.grid_spacing.max(0.1));
     let major = step * 10.0;
     let minor_color = minor_grid_color((major as f32) * app.view.zoom);
     let mut x = 0.0;
@@ -766,16 +791,34 @@ pub fn canvas(app: &mut BeamForge, ui: &mut egui::Ui) {
         y += step;
     }
     painter.rect_stroke(ws, 0.0, Stroke::new(1.0, Color32::from_rgb(90, 96, 108)), StrokeKind::Outside);
+    // "Mostra la croce al centro dell'area di lavoro"
+    if app.prefs.show_center_cross {
+        let c = ws.center();
+        let st = Stroke::new(1.0, Color32::from_rgb(220, 60, 60));
+        painter.line_segment([pos2(ws.left(), c.y), pos2(ws.right(), c.y)], st);
+        painter.line_segment([pos2(c.x, ws.top()), pos2(c.x, ws.bottom())], st);
+    }
 
     // shapes
-    let shapes = app.doc.shapes.clone();
+    // pictures are drawn in place: copying the shapes would copy every picture's pixels each frame
+    for i in 0..app.doc.shapes.len() {
+        let s = &app.doc.shapes[i];
+        if app.doc.layers[s.layer].show && matches!(s.geom, Geometry::Image { .. }) {
+            // a picture's outline only shows while it is selected
+            let outline = app.selection.contains(&s.id).then(|| (s.world_paths(), display_color(s.layer)));
+            draw_image(app, &ctx, &painter, &xf, i, 255);
+            if let Some((paths, col)) = outline {
+                for pl in &paths {
+                    draw_polyline(&painter, &xf, pl, Stroke::new(1.5, col), true);
+                }
+            }
+        }
+    }
+    let shapes: Vec<Shape> = app.doc.shapes.iter().filter(|s| !matches!(s.geom, Geometry::Image { .. })).cloned().collect();
     for s in &shapes {
         let cs = &app.doc.layers[s.layer];
         if !cs.show {
             continue;
-        }
-        if matches!(s.geom, Geometry::Image { .. }) {
-            draw_image(app, &ctx, &painter, &xf, s, 255);
         }
         let selected = app.selection.contains(&s.id);
         let col = display_color(s.layer);

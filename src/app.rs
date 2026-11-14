@@ -192,6 +192,15 @@ pub struct BeamForge {
     /// An import reading its file in the background (import_job.rs).
     pub import_job: Option<crate::import_job::ImportJob>,
     pub show_settings: bool,
+    /// the general settings (Impostazioni), see prefs.rs
+    pub prefs: crate::prefs::Prefs,
+    /// the Impostazioni window's copy while it is open
+    pub prefs_draft: Option<crate::prefs::Prefs>,
+    /// the window's "check for updates" switch while it is open
+    pub prefs_updates: Option<bool>,
+    pub settings_tab: usize,
+    /// when the last safety copy was written (seconds of app time)
+    pub last_autosave: f64,
     pub measure: crate::measure::MeasureState,
     /// Device settings being edited, applied only on OK.
     pub device_draft: Option<Device>,
@@ -203,6 +212,9 @@ pub struct BeamForge {
     /// Saved defaults per layer (Rendi predefinito).
     pub cut_defaults: HashMap<usize, CutSetting>,
     pub textures: HashMap<u64, egui::TextureHandle>,
+    /// what each picture's texture was made from (its layer's image settings), so a change of
+    /// image mode redraws it
+    pub texture_keys: HashMap<u64, u64>,
     pub anchor: usize,
     pub lock_ratio: bool,
     /// Amount the Ruota box turns the selection by (QNumEdit_ValueChanged 0x100c53f38).
@@ -267,6 +279,10 @@ pub enum PendingClose {
 impl BeamForge {
     pub fn new(cc: &eframe::CreationContext<'_>, screenshot: Option<PathBuf>) -> Self {
         let mut app = Self::create(cc, screenshot);
+        // the general settings; checks start from the defaults so a run is always the same
+        app.prefs = if app.screenshot.is_some() { crate::prefs::Prefs::default() } else { crate::prefs::Prefs::load() };
+        app.prefs.dark_background = !crate::theme::p().light;
+        app.apply_text_defaults();
         crate::update::clean_leftovers();
         app.auto_update_pending = app.screenshot.is_none()
             && crate::i18n::load_json::<bool>("update_auto.json").unwrap_or(true)
@@ -282,6 +298,10 @@ impl BeamForge {
         // BEAMFORGE_OPEN=settings,device,about (for testing) opens those windows at start
         if let Ok(v) = std::env::var("BEAMFORGE_OPEN") {
             app.show_settings = v.contains("settings");
+            // settings,tab3: open Impostazioni on its fourth tab (for testing)
+            if let Some(t) = v.split(',').find_map(|w| w.strip_prefix("tab")).and_then(|n| n.parse::<usize>().ok()) {
+                app.settings_tab = t;
+            }
             app.show_device = v.contains("device") && !v.contains("devices");
             app.show_about = v.contains("about");
             app.show_updates = v.contains("updates");
@@ -306,6 +326,52 @@ impl BeamForge {
                 for (g, x) in [(Geometry::Polygon { sides: 3, r: 40.0, ry: Some(40.0) }, 60.0), (Geometry::Polygon { sides: 8, r: 40.0, ry: Some(40.0) }, 150.0), (star(None), 240.0), (star(Some(DUAL_STAR_MIDDLE)), 330.0)] {
                     app.doc.add_shape(Shape::new(0, g, 0, x, 200.0));
                 }
+            }
+            // BEAMFORGE_OPEN=photo,preview (for testing): a 150 × 150 mm photo-like picture on an
+            // Image layer at 0.1 mm, then the preview of its engraving (a job of about a million moves)
+            if v.contains("photo") {
+                let px = 1500u32;
+                let gray: Vec<u8> = (0..px * px)
+                    .map(|i| {
+                        let (x, y) = ((i % px) as f64 / px as f64, (i / px) as f64 / px as f64);
+                        (127.0 + 120.0 * ((x * 37.0).sin() * (y * 23.0).cos())) as u8
+                    })
+                    .collect();
+                app.doc.layers[0].mode = CutMode::Image;
+                app.doc.layers[0].interval = 0.1;
+                // photo,<mode>: the layer's image mode by its saved name (dot, halftone, newsprint...)
+                for m in ImageMode::ALL {
+                    let name = m.label().to_lowercase().replace(' ', "");
+                    if v.split(',').any(|w| w == name) {
+                        app.doc.layers[0].image_mode = m;
+                    }
+                }
+                app.doc.add_shape(Shape::new(0, Geometry::Image { w: 150.0, h: 150.0, px_w: px, px_h: px, gray }, 0, 100.0, 100.0));
+                if v.contains("preview") {
+                    app.open_preview();
+                    // photo,preview,zoom: the preview zoomed in 8× on the middle
+                    if v.contains("zoom")
+                        && let Some(pv) = app.preview.as_mut()
+                    {
+                        pv.zoom_to(8.0);
+                    }
+                }
+            }
+            // BEAMFORGE_OPEN=legend: a black cut rectangle and a red filled ellipse, then the preview
+            // (its legend tells the two apart)
+            if v.contains("legend") {
+                app.doc.add_shape(Shape::new(0, Geometry::Rect { w: 70.0, h: 140.0, radius: 0.0 }, 0, 120.0, 200.0));
+                app.doc.layers[2].mode = CutMode::Fill;
+                app.doc.add_shape(Shape::new(0, Geometry::Ellipse { rx: 15.0, ry: 22.0 }, 2, 120.0, 210.0));
+                // legend,text: filled text on a blue Fill layer too
+                if v.contains("text") {
+                    app.doc.layers[1].mode = CutMode::Fill;
+                    app.new_text = "BeamForge".into();
+                    app.text_size = 20.0;
+                    app.current_layer = 1;
+                    app.make_text_shape([120.0, 150.0]);
+                }
+                app.open_preview();
             }
             // BEAMFORGE_OPEN=rotate: one rectangle picked and turned 20°, to show the rotate arrows
             // (run with BEAMFORGE_SHIFT=1 so Shift counts as held)
@@ -343,6 +409,27 @@ impl BeamForge {
                 app.editor_tab = if v.contains("advanced") { 1 } else { 0 };
                 if v.contains("offsetfill") {
                     app.doc.layers[0].mode = CutMode::OffsetFill;
+                } else if v.contains("image") {
+                    let cs = &mut app.doc.layers[0];
+                    cs.mode = CutMode::Image;
+                    cs.image_mode = ImageMode::Stucki;
+                    cs.speed = DEFAULT_SPEED_MM_MIN;
+                    cs.max_power = 20.0;
+                    cs.min_power = 20.0;
+                    cs.interval = 0.1;
+                    cs.angle = 0.0;
+                    cs.bidir = true;
+                    cs.negative = false;
+                    cs.output = true;
+                    cs.air = true;
+                    cs.passes = 1;
+                    cs.ramp_length = 0.0;
+                    cs.dot_width_on = false;
+                    cs.dot_width = 0.08;
+                    cs.pass_through = false;
+                    cs.cells_per_inch = 50.0;
+                    cs.halftone_angle = 22.5;
+                    cs.fill_grouping = FillGrouping::MergeAll;
                 } else if v.contains("fill") {
                     app.doc.layers[0].mode = CutMode::Fill;
                 }
@@ -408,6 +495,11 @@ impl BeamForge {
             relaunch_on_exit: None,
             import_job: None,
             show_settings: false,
+            prefs: crate::prefs::Prefs::default(),
+            prefs_draft: None,
+            prefs_updates: None,
+            settings_tab: 0,
+            last_autosave: 0.0,
             measure: Default::default(),
             device_draft: None,
             editor_layer: None,
@@ -415,6 +507,7 @@ impl BeamForge {
             editor_tab: 0,
             cut_defaults: crate::i18n::load_cut_defaults(),
             textures: HashMap::new(),
+            texture_keys: HashMap::new(),
             anchor: 4,
             lock_ratio: false,
             rot_input: 0.0,
@@ -689,7 +782,9 @@ impl BeamForge {
     /// offline; the window stays usable meanwhile and the import can be cancelled.
     /// --screenshot runs import at once, so their test setups see the shapes straight away.
     pub fn import_path(&mut self, p: &std::path::Path) {
-        if self.screenshot.is_some() {
+        // BEAMFORGE_ASYNC_IMPORT=1 (for testing): a --screenshot run imports in the background too,
+        // to see the "Importing…" window
+        if self.screenshot.is_some() && std::env::var_os("BEAMFORGE_ASYNC_IMPORT").is_none() {
             let r = crate::formats::import_file(p);
             self.finish_import(p, r);
             return;
@@ -741,7 +836,7 @@ impl BeamForge {
                 // a project's shapes keep their place; its groups get new ids here
                 self.checkpoint_now();
                 let mut map: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
-                let outer = (shapes.len() > 1).then(|| self.doc.alloc_id());
+                let outer = (self.prefs.group_imported && shapes.len() > 1).then(|| self.doc.alloc_id());
                 let mut ids = Vec::new();
                 for mut s in shapes {
                     let mut gs: Vec<u64> = outer.into_iter().collect();
@@ -752,7 +847,8 @@ impl BeamForge {
                     s.groups = gs;
                     ids.push(self.doc.add_shape(s));
                 }
-                self.selection = ids;
+                // "Seleziona le forme importate"
+                self.selection = if self.prefs.select_imported { ids } else { Vec::new() };
                 self.status = trf("Importato {}", &[&p.display()]);
             }
             Imported::Shapes(mut shapes) => {
@@ -780,8 +876,8 @@ impl BeamForge {
                         }
                     }
                 }
-                // the file comes in as one group of its pieces, so "Separa" splits it
-                let gid = (shapes.len() > 1).then(|| self.doc.alloc_id());
+                // "Raggruppa le forme importate": the file comes in as one group of its pieces
+                let gid = (self.prefs.group_imported && shapes.len() > 1).then(|| self.doc.alloc_id());
                 let mut ids = Vec::new();
                 for mut s in shapes {
                     if let Some(g) = gid {
@@ -789,7 +885,8 @@ impl BeamForge {
                     }
                     ids.push(self.doc.add_shape(s));
                 }
-                self.selection = ids;
+                // "Seleziona le forme importate"
+                self.selection = if self.prefs.select_imported { ids } else { Vec::new() };
                 self.status = trf("Importato {}", &[&p.display()]);
             }
             Imported::Image(mut s) => {
@@ -871,7 +968,7 @@ impl BeamForge {
 
     pub fn preview_test(&mut self, doc: Document) {
         let (job, gcode) = self.test_job(&doc);
-        self.preview = Some(Preview::new(job, gcode, Some(doc), &self.doc.device));
+        self.preview = Some(Preview::new(job, gcode, Some(doc), &self.doc));
     }
 
     pub fn frame_test(&mut self, doc: &Document) {
@@ -1518,8 +1615,15 @@ impl BeamForge {
         }
         self.checkpoint_now();
         let sel = self.selection.clone();
+        let mut touched: Vec<usize> = self.doc.shapes.iter().filter(|s| sel.contains(&s.id)).map(|s| s.layer).collect();
         for s in self.doc.shapes.iter_mut().filter(|s| sel.contains(&s.id)) {
             s.layer = layer;
+        }
+        touched.push(layer);
+        touched.sort_unstable();
+        touched.dedup();
+        for l in touched {
+            self.doc.lock_cut_mode(l);
         }
         self.doc.touch_layer(layer);
         self.current_layer = layer;
@@ -1540,6 +1644,62 @@ impl BeamForge {
     }
 
     /// Change the language (None = follow the system), remember it and rebuild the system menu.
+    /// Keep the settings from the Impostazioni window and act on the ones BeamForge uses.
+    pub fn apply_prefs(&mut self, new: crate::prefs::Prefs, ctx: &egui::Context) {
+        use crate::prefs::AppTheme;
+        let old = std::mem::replace(&mut self.prefs, new);
+        let p = &mut self.prefs;
+        // theme: "Usa sfondo scuro" and "Tema dell'applicazione" both pick light or dark
+        let mut light = None;
+        if p.dark_background != old.dark_background {
+            light = Some(!p.dark_background);
+            p.theme = if p.dark_background { AppTheme::Dark } else { AppTheme::Light };
+        } else if p.theme != old.theme {
+            light = match p.theme {
+                AppTheme::Light => Some(true),
+                AppTheme::Dark => Some(false),
+                AppTheme::System => ctx.system_theme().map(|t| t == egui::Theme::Light),
+            };
+        }
+        if let Some(l) = light {
+            if l != crate::theme::p().light {
+                crate::theme::set_light(ctx, l);
+                crate::theme::save_light(l);
+            }
+            p.dark_background = !l;
+        }
+        // text defaults for the next text
+        if p.default_font != old.default_font || p.default_text_height != old.default_text_height {
+            self.apply_text_defaults();
+        }
+        self.prefs.save();
+    }
+
+    /// "Carattere predefinito" and "Altezza predefinita" for new text.
+    pub fn apply_text_defaults(&mut self) {
+        if crate::text::fonts().iter().any(|f| f.name == self.prefs.default_font) {
+            self.text_font = self.prefs.default_font.clone();
+        }
+        self.text_size = self.prefs.default_text_height;
+    }
+
+    /// "Intervallo di salvataggio automatico": every so many minutes, when there are unsaved
+    /// changes, a safety copy of the project goes to autosave.beamforge in the settings folder.
+    fn autosave(&mut self, ctx: &egui::Context) {
+        let mins = self.prefs.autosave_minutes;
+        if mins == 0 || self.screenshot.is_some() {
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        if now - self.last_autosave < mins as f64 * 60.0 {
+            return;
+        }
+        self.last_autosave = now;
+        if self.dirty {
+            crate::i18n::save_json("autosave.beamforge", &self.doc);
+        }
+    }
+
     pub fn set_language(&mut self, choice: Option<crate::i18n::Lang>, ctx: &egui::Context) {
         crate::i18n::save_choice(choice);
         crate::i18n::set(choice.unwrap_or_else(crate::i18n::system_lang));
@@ -1587,6 +1747,14 @@ impl BeamForge {
             self.editor_tab = ((k / 4) % 2) as u8;
             self.doc.layers[0].tabs_enabled = true;
             self.doc.layers[0].manual_tabs = k % 2 == 1;
+        }
+        // BEAMFORGE_OPEN=editor,image,imgmodes (for measuring): every 9 frames the Image editor shows
+        // another image mode (all twelve, 3D Slice on one pass to show its warning), so each text's size is seen
+        if std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("imgmodes")) && ss.frames % 9 == 0 && ss.frames < 108 {
+            let k = (ss.frames / 9) as usize;
+            let cs = &mut self.doc.layers[0];
+            cs.image_mode = ImageMode::ALL[k % ImageMode::ALL.len()];
+            cs.passes = 1;
         }
         // BEAMFORGE_OPEN=material,cycle: the test generator opens each of its three inline editors in turn
         if std::env::var("BEAMFORGE_OPEN").is_ok_and(|v| v.contains("material") && v.contains("cycle")) && ss.frames % 20 == 0 && ss.frames < 100 {
@@ -1722,6 +1890,7 @@ impl eframe::App for BeamForge {
                 self.import_path(&p);
             }
         }
+        self.autosave(&ctx);
         self.handle_screenshot(&ctx);
         if self.connected.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
@@ -1820,8 +1989,9 @@ impl BeamForge {
         if enter && self.line_pts.len() > 1 {
             crate::canvas::finish_line(self, false);
         }
-        let shift = ctx.input(|i| i.modifiers.shift);
-        let step = if shift { 10.0 } else { 1.0 };
+        // arrow moves: Impostazioni > Unità e Griglie > Incrementi spostamento forma
+        let (shift, cmd) = ctx.input(|i| (i.modifiers.shift, i.modifiers.command));
+        let step = if shift { self.prefs.nudge_coarse } else if cmd { self.prefs.nudge_fine } else { self.prefs.nudge };
         let mut d = [0.0, 0.0];
         ctx.input(|i| {
             if i.key_pressed(Key::ArrowLeft) {
@@ -1854,6 +2024,6 @@ impl BeamForge {
 
     pub fn open_preview(&mut self) {
         let (job, gcode) = self.job_gcode();
-        self.preview = Some(Preview::new(job, gcode, None, &self.doc.device));
+        self.preview = Some(Preview::new(job, gcode, None, &self.doc));
     }
 }

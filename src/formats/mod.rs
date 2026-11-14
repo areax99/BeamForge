@@ -32,7 +32,7 @@ pub enum Imported {
 /// The file groups of the original's Import dialog, in its order (picture 18 of the person).
 pub const IMAGE_EXTS: &[&str] = &["bmp", "jpg", "jpeg", "png", "gif", "tif", "tiff", "tga", "webp"];
 pub const VECTOR_EXTS: &[&str] =
-    &["ai", "pdf", "sc", "dxf", "gc", "gcode", "nc", "hpgl", "plt", "lbrn", "lbrn2", "mage", "lbt", "rd", "rld", "scpro2", "svg"];
+    &["ai", "pdf", "eps", "cdr", "sc", "dxf", "gc", "gcode", "nc", "hpgl", "plt", "lbrn", "lbrn2", "mage", "lbt", "rd", "rld", "scpro2", "svg"];
 pub const MODEL_EXTS: &[&str] = &["3mf", "amf", "obj", "off", "ply", "stl"];
 pub const PCB_EXTS: &[&str] = &[
     "gbr", "grb", "gbx", "ger", "pho", "gtl", "gbl", "gts", "gbs", "gto", "gbo", "gtp", "gbp", "gko", "gm1", "g1", "g2", "g3",
@@ -64,6 +64,10 @@ pub fn import_file(path: &std::path::Path) -> Result<Imported, String> {
         "hpgl" | "plt" => vector::hpgl(&bytes)?,
         "gc" | "gcode" | "nc" => vector::gcode(&bytes)?,
         "ai" | "pdf" => pdf::import(&bytes)?,
+        "eps" | "epsf" | "ps" => pdf::eps(&bytes)?,
+        // CorelDRAW's own format is a closed binary one (zip + RIFF since X4); like the original,
+        // which only offers a macro to run inside CorelDRAW, BeamForge asks for an exported file
+        "cdr" => return Err(tr("I file CorelDRAW (.cdr) non si possono leggere direttamente. In CorelDRAW usa File › Esporta e scegli SVG, PDF, DXF o EPS, poi importa quel file.").into()),
         "lbrn" | "lbrn2" | "mage" | "lbt" => return project::lightburn(&bytes).map(Imported::Placed),
         "sc" | "scpro2" => project::signcut(&bytes)?,
         "rd" => ruida::rd(&bytes)?,
@@ -222,6 +226,25 @@ mod tests {
             let r = import_file(&p);
             if let Err(msg) = r {
                 assert!(!msg.contains("non supportato"), "{e}: {msg}");
+            }
+        }
+    }
+
+    /// Imports every file listed (one path per line) in BEAMFORGE_IMPORT_LIST and reports each.
+    /// `BEAMFORGE_IMPORT_LIST=list.txt cargo test import_samples -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn import_samples() {
+        let Ok(list) = std::env::var("BEAMFORGE_IMPORT_LIST") else { return };
+        for path in std::fs::read_to_string(list).unwrap().lines().filter(|l| !l.is_empty()) {
+            let t = std::time::Instant::now();
+            let r = import_file(std::path::Path::new(path));
+            let ms = t.elapsed().as_millis();
+            let name = path.rsplit('/').next().unwrap_or(path);
+            match r {
+                Ok(Imported::Shapes(s)) | Ok(Imported::Placed(s)) => println!("OK {} shapes {ms} ms | {name}", s.len()),
+                Ok(Imported::Image(_)) => println!("OK image {ms} ms | {name}"),
+                Err(e) => println!("ERR {e} | {name}"),
             }
         }
     }

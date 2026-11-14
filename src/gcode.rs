@@ -30,7 +30,7 @@ pub struct JobOptions {
     pub optimize: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MoveKind {
     /// G0, laser off
     Rapid,
@@ -38,6 +38,8 @@ pub enum MoveKind {
     Travel,
     /// G1 burning
     Cut,
+    /// Dot mode: go to `to` with the laser off, stop, then fire at `power` for `us` microseconds
+    Dot { us: u32 },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -103,8 +105,12 @@ impl Job {
         pts.push(self.start);
         pts.extend(self.moves.iter().map(|m| m.to));
         let speed_of = |m: &Move| match m.kind {
-            MoveKind::Rapid => rapid_speed,
+            MoveKind::Rapid | MoveKind::Dot { .. } => rapid_speed,
             _ => m.speed / 60.0,
+        };
+        let dwell = |m: &Move| match m.kind {
+            MoveKind::Dot { us } => us as f64 / 1e6,
+            _ => 0.0,
         };
         let dir = |i: usize| {
             let d = dist(pts[i], pts[i + 1]);
@@ -115,11 +121,12 @@ impl Job {
             let d = dist(pts[i], pts[i + 1]);
             let vmax = speed_of(&self.moves[i]).max(0.1);
             if d < 1e-9 {
-                times.push(0.0);
+                times.push(dwell(&self.moves[i]));
                 continue;
             }
-            // speed allowed at the end of this move (corner into the next one)
-            let v_out_target = if i + 1 < n && std::mem::discriminant(&self.moves[i].kind) == std::mem::discriminant(&self.moves[i + 1].kind) {
+            // speed allowed at the end of this move (corner into the next one); a dot stops
+            let stops = matches!(self.moves[i].kind, MoveKind::Dot { .. });
+            let v_out_target = if !stops && i + 1 < n && std::mem::discriminant(&self.moves[i].kind) == std::mem::discriminant(&self.moves[i + 1].kind) {
                 let (p, q) = (dir(i), dir(i + 1));
                 let c = (p[0] * q[0] + p[1] * q[1]).max(0.0);
                 vmax.min(speed_of(&self.moves[i + 1])) * c
@@ -132,7 +139,7 @@ impl Job {
             let d_acc = ((vpeak * vpeak - v0 * v0) / (2.0 * a)).max(0.0);
             let d_dec = ((vpeak * vpeak - v1 * v1) / (2.0 * a)).max(0.0);
             let cruise = (d - d_acc - d_dec).max(0.0);
-            times.push((vpeak - v0) / a + (vpeak - v1) / a + cruise / vpeak);
+            times.push((vpeak - v0) / a + (vpeak - v1) / a + cruise / vpeak + dwell(&self.moves[i]));
             v_in = v1;
         }
         times
@@ -490,29 +497,46 @@ fn fill_sets(shapes: &[&Shape], grouping: crate::model::FillGrouping) -> Vec<Vec
     }
 }
 
-const DITHER_RIGHT_WEIGHT: f64 = 0.4375;
-const DITHER_LOWER_LEFT_WEIGHT: f64 = 0.1875;
-const DITHER_LOWER_WEIGHT: f64 = 0.3125;
-const DITHER_LOWER_RIGHT_WEIGHT: f64 = 0.0625;
+/// Grey value 0..1 of one image at a world point, if the point lands on a pixel.
+fn sample_image(shape: &Shape, x: f64, y: f64) -> Option<f64> {
+    let Geometry::Image { w, h, px_w, px_h, gray } = &shape.geom else { return None };
+    if *w <= 0.0 || *h <= 0.0 || *px_w == 0 || *px_h == 0 {
+        return None;
+    }
+    let l = shape.to_local([x, y]);
+    let u = (l[0] / w + 0.5) * *px_w as f64;
+    let v = (0.5 - l[1] / h) * *px_h as f64;
+    if u >= 0.0 && v >= 0.0 && (u as u32) < *px_w && (v as u32) < *px_h {
+        Some(gray[(v as u32 * px_w + u as u32) as usize] as f64 / 255.0)
+    } else {
+        None
+    }
+}
 
-/// Raster an image shape line by line.
-fn image_lines(shape: &Shape, cs: &CutSetting, moves: &mut Vec<Move>, layer: usize, pos: &mut P2) {
-    let Geometry::Image { w, h, px_w, px_h, gray } = &shape.geom else { return };
-    let b = shape.bbox();
+/// Raster one or more image shapes on shared scan lines.
+/// "Fill all at once" passes every picture; "one by one" passes each on its own.
+fn image_lines(shapes: &[&Shape], cs: &CutSetting, pass: u32, passes: u32, moves: &mut Vec<Move>, layer: usize, pos: &mut P2) {
+    let shapes: Vec<&Shape> = shapes.iter().copied().filter(|s| matches!(s.geom, Geometry::Image { .. })).collect();
+    if shapes.is_empty() {
+        return;
+    }
+    let mut b = BBox::empty();
+    for s in &shapes {
+        b.union(&s.bbox());
+    }
+    if !b.is_valid() {
+        return;
+    }
     let interval = cs.interval.max(0.02);
     let cols = ((b.w() / interval).ceil() as usize).max(1);
     let rows = ((b.h() / interval).ceil() as usize).max(1);
-    // sample to a grid of levels 0..1 (1 = burn fully)
+    // levels 0..1 (1 = burn fully); -1 is off the pictures
     let mut grid = vec![-1.0f64; cols * rows];
     for r in 0..rows {
         let y = b.max[1] - (r as f64 + 0.5) * interval;
         for c in 0..cols {
             let x = b.min[0] + (c as f64 + 0.5) * interval;
-            let l = shape.to_local([x, y]);
-            let u = (l[0] / w + 0.5) * *px_w as f64;
-            let v = (0.5 - l[1] / h) * *px_h as f64;
-            if u >= 0.0 && v >= 0.0 && (u as u32) < *px_w && (v as u32) < *px_h {
-                let g = gray[(v as u32 * px_w + u as u32) as usize] as f64 / 255.0;
+            if let Some(g) = shapes.iter().find_map(|s| sample_image(s, x, y)) {
                 let mut level = 1.0 - g;
                 if cs.negative {
                     level = 1.0 - level;
@@ -521,60 +545,48 @@ fn image_lines(shape: &Shape, cs: &CutSetting, moves: &mut Vec<Move>, layer: usi
             }
         }
     }
-    match cs.image_mode {
-        ImageMode::Threshold => {
-            for v in grid.iter_mut() {
-                if *v >= 0.0 {
-                    *v = if *v >= 0.5 { 1.0 } else { 0.0 };
-                }
-            }
-        }
-        ImageMode::Dithered => {
-            // Floyd-Steinberg error diffusion
-            for r in 0..rows {
-                for c in 0..cols {
-                    let i = r * cols + c;
-                    if grid[i] < 0.0 {
-                        continue;
-                    }
-                    let old = grid[i];
-                    let new = if old >= 0.5 { 1.0 } else { 0.0 };
-                    grid[i] = new;
-                    let err = old - new;
-                    let mut push = |rr: usize, cc: usize, k: f64| {
-                        if rr < rows && cc < cols {
-                            let j = rr * cols + cc;
-                            if grid[j] >= 0.0 {
-                                grid[j] += err * k;
-                            }
-                        }
-                    };
-                    push(r, c + 1, DITHER_RIGHT_WEIGHT);
-                    if c > 0 {
-                        push(r + 1, c - 1, DITHER_LOWER_LEFT_WEIGHT);
-                    }
-                    push(r + 1, c, DITHER_LOWER_WEIGHT);
-                    push(r + 1, c + 1, DITHER_LOWER_RIGHT_WEIGHT);
-                }
-            }
-        }
-        ImageMode::Grayscale => {}
+    crate::imageproc::apply(cs, &mut grid, cols, rows, b.min[0], b.max[1], interval);
+    if !cs.pass_through && cs.image_mode == ImageMode::Dot {
+        dot_lines(&grid, cols, rows, &b, interval, cs, moves, layer, pos);
+        return;
     }
+    if !cs.pass_through && cs.image_mode == ImageMode::Slice3D {
+        // 3D Slice: pass k of n burns, at full power, every point darker than k/n, so the darkest
+        // grey is burned on every pass and goes deepest (one depth level per pass)
+        // `pass` counts from 0 here
+        let cut = pass as f64 / passes.max(1) as f64;
+        for v in grid.iter_mut() {
+            if *v >= 0.0 {
+                *v = if *v > cut + 0.004 { 1.0 } else { 0.0 };
+            }
+        }
+    }
+    let continuous = cs.pass_through || matches!(cs.image_mode, ImageMode::Grayscale);
     let over = if cs.overscan { cs.overscan_percent / 100.0 * cs.speed / 60.0 } else { 0.0 };
+    let ramp = cs.ramp_length.max(0.0);
     let mut forward = true;
     for r in 0..rows {
         let y = b.max[1] - (r as f64 + 0.5) * interval;
-        // power per column
         let pw: Vec<f64> = (0..cols)
             .map(|c| {
                 let v = grid[r * cols + c];
                 if v <= 0.004 {
-                    0.0
-                } else if matches!(cs.image_mode, ImageMode::Grayscale) {
+                    return 0.0;
+                }
+                let mut p = if continuous {
                     low_power(cs) + (cs.max_power - low_power(cs)) * v.clamp(0.0, 1.0)
                 } else {
                     cs.max_power
+                };
+                if ramp > 0.0 && p > 0.0 {
+                    let x = b.min[0] + (c as f64 + 0.5) * interval;
+                    let dx = (x - b.min[0]).min(b.max[0] - x).max(0.0);
+                    let dy = (y - b.min[1]).min(b.max[1] - y).max(0.0);
+                    let t = (dx.min(dy) / ramp).clamp(0.0, 1.0);
+                    let low = low_power(cs);
+                    p = low + (p - low) * t;
                 }
+                p
             })
             .collect();
         let Some(first) = pw.iter().position(|p| *p > 0.0) else { continue };
@@ -585,6 +597,7 @@ fn image_lines(shape: &Shape, cs: &CutSetting, moves: &mut Vec<Move>, layer: usi
         let start_x = if forward { x_at(first) } else { x_at(last + 1) };
         moves.push(Move { kind: MoveKind::Rapid, to: [start_x - dir * over, y], power: 0.0, speed: cs.speed, layer });
         moves.push(Move { kind: MoveKind::Travel, to: [start_x, y], power: 0.0, speed: cs.speed, layer });
+        let mut cursor = start_x;
         let mut i = 0;
         while i < cols_iter.len() {
             let p = pw[cols_iter[i]];
@@ -594,8 +607,26 @@ fn image_lines(shape: &Shape, cs: &CutSetting, moves: &mut Vec<Move>, layer: usi
             }
             let end_c = cols_iter[j];
             let end_x = if forward { x_at(end_c + 1) } else { x_at(end_c) };
-            let kind = if p > 0.0 { MoveKind::Cut } else { MoveKind::Travel };
-            moves.push(Move { kind, to: [end_x, y], power: p, speed: cs.speed, layer });
+            let burn = p > 0.0;
+            if burn && cs.dot_width_on && cs.dot_width > 0.0 {
+                // the spot is wider than the drawn dot, so each burned run is shortened by half the spot on both ends
+                let sign = if forward { 1.0 } else { -1.0 };
+                let len = (end_x - cursor) * sign;
+                let inset = cs.dot_width * 0.5;
+                if len > cs.dot_width {
+                    let burn_from = cursor + sign * inset;
+                    let burn_to = end_x - sign * inset;
+                    moves.push(Move { kind: MoveKind::Travel, to: [burn_from, y], power: 0.0, speed: cs.speed, layer });
+                    moves.push(Move { kind: MoveKind::Cut, to: [burn_to, y], power: p, speed: cs.speed, layer });
+                    moves.push(Move { kind: MoveKind::Travel, to: [end_x, y], power: 0.0, speed: cs.speed, layer });
+                } else {
+                    moves.push(Move { kind: MoveKind::Travel, to: [end_x, y], power: 0.0, speed: cs.speed, layer });
+                }
+            } else {
+                let kind = if burn { MoveKind::Cut } else { MoveKind::Travel };
+                moves.push(Move { kind, to: [end_x, y], power: p, speed: cs.speed, layer });
+            }
+            cursor = end_x;
             i = j + 1;
         }
         let end = if forward { x_at(last + 1) } else { x_at(first) };
@@ -603,6 +634,70 @@ fn image_lines(shape: &Shape, cs: &CutSetting, moves: &mut Vec<Move>, layer: usi
         *pos = [end + dir * over, y];
         if cs.bidir {
             forward = !forward;
+        }
+    }
+}
+
+/// Dot mode: along each scan line, one dot every `dot_spacing` mm where the picture is not white.
+/// The beam fires standing still at the maximum power; the stop is `dot_time_ms` for black and
+/// shorter for lighter greys (constant power, time varying: the original's tooltip for Dot Mode).
+#[allow(clippy::too_many_arguments)]
+fn dot_lines(grid: &[f64], cols: usize, rows: usize, b: &BBox, interval: f64, cs: &CutSetting, moves: &mut Vec<Move>, layer: usize, pos: &mut P2) {
+    let spacing = cs.dot_spacing.max(0.01);
+    let full_us = (cs.dot_time_ms.max(0.0) * 1000.0).round();
+    let width = b.max[0] - b.min[0];
+    let dots = ((width / spacing).floor() as usize).max(1);
+    let mut forward = true;
+    for r in 0..rows {
+        let y = b.max[1] - (r as f64 + 0.5) * interval;
+        let mut line: Vec<(f64, u32)> = Vec::new();
+        for k in 0..dots {
+            let x = b.min[0] + (k as f64 + 0.5) * spacing;
+            let c = (((x - b.min[0]) / interval) as usize).min(cols - 1);
+            let v = grid[r * cols + c];
+            if v > 0.004 {
+                let us = (full_us * v.clamp(0.0, 1.0)).round() as u32;
+                if us > 0 {
+                    line.push((x, us));
+                }
+            }
+        }
+        if line.is_empty() {
+            continue;
+        }
+        if !forward {
+            line.reverse();
+        }
+        for (x, us) in line {
+            moves.push(Move { kind: MoveKind::Dot { us }, to: [x, y], power: cs.max_power, speed: cs.speed, layer });
+            *pos = [x, y];
+        }
+        if cs.bidir {
+            forward = !forward;
+        }
+    }
+}
+
+/// Split shapes the way the Image window's three radios do.
+fn shape_groups<'a>(shapes: &[&'a Shape], grouping: crate::model::FillGrouping) -> Vec<Vec<&'a Shape>> {
+    use crate::model::FillGrouping::*;
+    match grouping {
+        MergeAll => vec![shapes.to_vec()],
+        Individual => shapes.iter().copied().map(|s| vec![s]).collect(),
+        ByGroup => {
+            let mut keys: Vec<u64> = Vec::new();
+            let mut sets: Vec<Vec<&Shape>> = Vec::new();
+            for s in shapes {
+                let k = s.groups.first().copied().unwrap_or(s.id);
+                match keys.iter().position(|x| *x == k) {
+                    Some(i) => sets[i].push(s),
+                    None => {
+                        keys.push(k);
+                        sets.push(vec![s]);
+                    }
+                }
+            }
+            sets
         }
     }
 }
@@ -643,9 +738,11 @@ pub fn plan(doc: &Document, selection: &[u64], opts: &JobOptions) -> Job {
             continue;
         }
         let passes = cs.passes.max(1);
+        // A picture is engraved as an image. A vector layer cannot be sent as one.
+        let mode = doc.layer_art(layer).clamp(cs.mode);
         for pass in 0..passes {
             job.sections.push((layer, pass + 1, passes, job.moves.len()));
-            match cs.mode {
+            match mode {
                 CutMode::Line => {
                     let paths: Vec<Polyline> = layer_shapes
                         .iter()
@@ -680,14 +777,12 @@ pub fn plan(doc: &Document, selection: &[u64], opts: &JobOptions) -> Job {
                     offset_fill(&rings, cs, &mut job.moves, layer, &mut pos);
                 }
                 CutMode::Image => {
-                    for s in layer_shapes.iter() {
-                        if matches!(s.geom, Geometry::Image { .. }) {
-                            image_lines(s, cs, &mut job.moves, layer, &mut pos);
-                        } else {
-                            // vector shapes on an image layer are filled
-                            let rings: Vec<Polyline> = s.world_paths().into_iter().filter(|p| p.closed).collect();
-                            fill_lines(&rings, cs, cs.angle, &mut job.moves, layer, &mut pos);
-                        }
+                    let (images, vectors): (Vec<&Shape>, Vec<&Shape>) = layer_shapes.iter().copied().partition(|s| matches!(s.geom, Geometry::Image { .. }));
+                    for rings in fill_sets(&vectors, cs.fill_grouping) {
+                        fill_lines(&rings, cs, cs.angle, &mut job.moves, layer, &mut pos);
+                    }
+                    for group in shape_groups(&images, cs.fill_grouping) {
+                        image_lines(&group, cs, pass, passes, &mut job.moves, layer, &mut pos);
                     }
                 }
             }
@@ -1097,6 +1192,23 @@ pub fn write_gcode(doc: &Document, job: &Job, opts: &JobOptions) -> String {
                 air_on = cs.air;
             }
         }
+        // Dot mode: rapid to the dot, then fire standing still. GRBL keeps the beam on during a
+        // G4 pause only under M3, so each dot is M3 S… / G4 P… / M5 (the pause is in seconds).
+        if let MoveKind::Dot { us } = m.kind {
+            let mp = to_machine(doc, job, opts, m.to);
+            let dx = mp[0] - last_machine[0];
+            let dy = mp[1] - last_machine[1];
+            if dx.abs() >= MOVE_EPS || dy.abs() >= MOVE_EPS {
+                let (x, y) = if relative { (dx, dy) } else { (mp[0], mp[1]) };
+                out.push_str(&format!("G0 X{}Y{}\n", num(x), num(y)));
+                last_machine = mp;
+            }
+            let s = m.power / 100.0 * d.s_max;
+            out.push_str(&format!("M3 S{}\nG4 P{}\nM5\n", num_d(s, S_DECIMALS), num_d(us as f64 / 1e6, 6)));
+            laser_on = "M5";
+            last_s = None;
+            continue;
+        }
         // Protocol_GCode::EmitMoveOrCut (0x1005e4644): "G0 "/"G1 ", then X, Y, S, F written
         // back to back, each only when it changed.
         let mp = to_machine(doc, job, opts, m.to);
@@ -1115,7 +1227,7 @@ pub fn write_gcode(doc: &Document, job: &Job, opts: &JobOptions) -> String {
             emitted[1] = mp[1];
         }
         let gword = match m.kind {
-            MoveKind::Rapid => "G0 ",
+            MoveKind::Rapid | MoveKind::Dot { .. } => "G0 ",
             _ => "G1 ",
         };
         if !write_x && !write_y {
@@ -1505,5 +1617,88 @@ mod tests {
         assert!(!job.moves.is_empty());
         let g = write_gcode(&doc, &job, &opts);
         assert!(g.contains("; Layer C00 Pass 1 of 1\nM3\n"));
+    }
+
+    fn image_job(gray: Vec<u8>, tweak: impl FnOnce(&mut CutSetting)) -> Job {
+        let mut doc = Document::default();
+        let px = gray.len() as u32;
+        doc.layers[0].mode = CutMode::Image;
+        doc.layers[0].interval = 1.0;
+        doc.layers[0].overscan = false;
+        doc.layers[0].image_mode = ImageMode::Threshold;
+        doc.layers[0].bidir = false;
+        tweak(&mut doc.layers[0]);
+        let w = px as f64;
+        doc.add_shape(Shape::new(0, Geometry::Image { w, h: 1.0, px_w: px, px_h: 1, gray }, 0, w / 2.0, 0.5));
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false };
+        plan(&doc, &[], &opts)
+    }
+
+    #[test]
+    fn image_modes_change_what_the_laser_burns() {
+        // a white picture does not burn; Negative turns it on
+        let plain = image_job(vec![255, 255, 255, 255], |_| {});
+        assert!(cut_len(&plain, MoveKind::Cut) < 1e-6);
+        let neg = image_job(vec![255, 255, 255, 255], |cs| cs.negative = true);
+        assert!(cut_len(&neg, MoveKind::Cut) > 1.0);
+        // dot-width correction shortens the burned run by the spot size
+        let full = image_job(vec![0, 0, 0, 0], |_| {});
+        let corrected = image_job(vec![0, 0, 0, 0], |cs| {
+            cs.dot_width_on = true;
+            cs.dot_width = 1.0;
+        });
+        assert!((cut_len(&full, MoveKind::Cut) - cut_len(&corrected, MoveKind::Cut) - 1.0).abs() < 1e-6);
+        // pass-through keeps the grey instead of a hard on/off
+        let pass = image_job(vec![0, 128, 255, 0], |cs| {
+            cs.pass_through = true;
+            cs.min_power = 0.0;
+            cs.max_power = 100.0;
+        });
+        let powers: Vec<f64> = pass.moves.iter().filter(|m| m.kind == MoveKind::Cut).map(|m| m.power).collect();
+        assert!(powers.iter().any(|p| *p > 10.0 && *p < 90.0), "powers {powers:?}");
+    }
+
+    #[test]
+    fn dot_mode_stops_longer_on_darker_dots() {
+        let job = image_job(vec![0, 128, 255, 0], |cs| {
+            cs.image_mode = ImageMode::Dot;
+            cs.dot_spacing = 1.0;
+            cs.dot_time_ms = 2.0;
+        });
+        let dots: Vec<u32> = job.moves.iter().filter_map(|m| if let MoveKind::Dot { us } = m.kind { Some(us) } else { None }).collect();
+        // black = the full 2 ms, mid grey about half, white no dot
+        assert_eq!(dots.len(), 3, "dots {dots:?}");
+        assert_eq!(dots[0], 2000);
+        assert!(dots[1] > 800 && dots[1] < 1200);
+        let doc = Document::default();
+        let opts = JobOptions { start_from: StartFrom::AbsoluteCoords, job_origin: 6, selected_only: false, optimize: false };
+        let g = write_gcode(&doc, &job, &opts);
+        assert!(g.contains("M3 S"), "{g}");
+        assert!(g.contains("G4 P0.002\nM5"), "{g}");
+    }
+
+    #[test]
+    fn slice_3d_burns_less_on_each_pass() {
+        // levels 1.0, 0.69, 0.41, 0.18 against the pass cuts 0, 1/4, 2/4, 3/4
+        let job = image_job(vec![0, 80, 150, 210], |cs| {
+            cs.image_mode = ImageMode::Slice3D;
+            cs.passes = 4;
+        });
+        // the burned length shrinks from pass to pass: darker greys go deeper
+        let mut lens = Vec::new();
+        for (i, s) in job.sections.iter().enumerate() {
+            let end = job.sections.get(i + 1).map(|n| n.3).unwrap_or(job.moves.len());
+            let mut last = if s.3 > 0 { job.moves[s.3 - 1].to } else { job.start };
+            let mut d = 0.0;
+            for m in &job.moves[s.3..end] {
+                if m.kind == MoveKind::Cut {
+                    d += dist(last, m.to);
+                }
+                last = m.to;
+            }
+            lens.push(d);
+        }
+        assert_eq!(lens.len(), 4);
+        assert!(lens[0] > lens[1] && lens[1] > lens[2] && lens[2] > lens[3] && lens[3] > 0.5, "lens {lens:?}");
     }
 }

@@ -341,13 +341,13 @@ fn material_window(app: &mut BeamForge, ctx: &egui::Context) {
                 if layer_button(ui, 1, tr("Modifica impostazione testo")) {
                     editing = if editing == Some(1) { None } else { Some(1) };
                 }
-                ui.checkbox(&mut t.enable_text, tr("Abilita testo"));
+                crate::panels::switch(ui, &mut t.enable_text, tr("Abilita testo"));
             });
             ui.vertical(|ui| {
                 if layer_button(ui, 2, tr("Modifica impostazione bordo")) {
                     editing = if editing == Some(2) { None } else { Some(2) };
                 }
-                ui.checkbox(&mut t.enable_border, tr("Abilita bordo"));
+                crate::panels::switch(ui, &mut t.enable_border, tr("Abilita bordo"));
             });
             ui.add_space(12.0);
             ui.vertical(|ui| {

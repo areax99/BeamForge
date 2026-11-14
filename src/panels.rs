@@ -17,11 +17,70 @@ pub fn mode_it(m: CutMode) -> &'static str {
     }
 }
 
+/// The cut-mode list, holding only the modes the layer may use (the person's request).
+/// A picture layer has no list at all: it just reads "Immagine". A vector layer's list has
+/// Line, Fill and Offset Fill, without Image. Pictures and vectors together keep their mode.
+fn mode_combo(ui: &mut egui::Ui, id: &str, cs: &mut CutSetting, art: LayerArt, width: Option<f32>) -> bool {
+    let allowed: Vec<CutMode> = [CutMode::Line, CutMode::Fill, CutMode::OffsetFill, CutMode::Image]
+        .into_iter()
+        .filter(|&m| art.allows(m))
+        .collect();
+    if allowed.len() <= 1 {
+        // nothing to choose: show the mode as plain text, in the combo's place
+        let w = width.unwrap_or(ui.spacing().combo_width);
+        let hint = if art == LayerArt::Image {
+            tr("Un'immagine resta in modalità Immagine")
+        } else {
+            tr("Immagini e forme vettoriali insieme: la modalità resta com'è")
+        };
+        ui.add_sized(vec2(w, ui.spacing().interact_size.y), egui::Label::new(mode_it(cs.mode)).selectable(false))
+            .on_hover_text(hint);
+        return false;
+    }
+    let mut changed = false;
+    let mut combo = egui::ComboBox::from_id_salt(id).selected_text(mode_it(cs.mode));
+    if let Some(w) = width {
+        combo = combo.width(w);
+    }
+    combo.show_ui(ui, |ui| {
+        for m in allowed {
+            changed |= ui.selectable_value(&mut cs.mode, m, mode_it(m)).changed();
+        }
+    });
+    changed
+}
+
 fn image_mode_it(m: ImageMode) -> &'static str {
     match m {
         ImageMode::Threshold => tr("Soglia"),
-        ImageMode::Dithered => tr("Retinato (Floyd-Steinberg)"),
+        ImageMode::Ordered => tr("Ordinato"),
+        ImageMode::Atkinson => tr("Atkinson"),
+        ImageMode::Dithered => tr("Dithering"),
+        ImageMode::Stucki => tr("Stucki"),
+        ImageMode::Jarvis => tr("Jarvis"),
+        ImageMode::Newsprint => tr("Carta di giornale"),
+        ImageMode::Halftone => tr("Mezzitoni"),
+        ImageMode::Sketch => tr("Schizzo"),
         ImageMode::Grayscale => tr("Scala di grigi"),
+        ImageMode::Dot => tr("Modalità punto"),
+        ImageMode::Slice3D => tr("Spaccato 3D"),
+    }
+}
+
+fn image_mode_blurb(m: ImageMode) -> &'static str {
+    match m {
+        ImageMode::Threshold => tr("Soglia: ogni punto è acceso o spento. Adatto a loghi e disegni già in bianco e nero."),
+        ImageMode::Ordered => tr("Ordinato: motivo a matrice regolare. Veloce, con un reticolo visibile, adatto a immagini semplici."),
+        ImageMode::Atkinson => tr("Atkinson: diffonde solo parte dell'errore. Conserva i chiari e gli scuri, utile per immagini contrastate."),
+        ImageMode::Dithered => tr("Dithering: Floyd-Steinberg. Un buon equilibrio tra velocità e dettaglio per la maggior parte delle immagini."),
+        ImageMode::Stucki => tr("Stucki: Dithering di alta qualità. Leggermente più veloce di Jarvis, un'ottima scelta per ombreggiature uniformi o immagini fotografiche."),
+        ImageMode::Jarvis => tr("Jarvis: la diffusione più morbida. Più lenta di Stucki, ottima per fotografie con molti toni vicini."),
+        ImageMode::Newsprint => tr("Carta di giornale: punti raggruppati come la stampa dei quotidiani. Dà alle foto un aspetto stampato."),
+        ImageMode::Halftone => tr("Mezzitoni: punti di dimensione variabile, ruotati dell'angolo di mezzitoni. La dimensione delle celle segue le celle per pollice."),
+        ImageMode::Sketch => tr("Schizzo: tiene i contorni e lascia il resto vuoto, come un disegno a matita."),
+        ImageMode::Grayscale => tr("Scala di grigi: la potenza segue la luminosità, senza puntini. Serve un controller che regoli la potenza lungo la linea."),
+        ImageMode::Dot => tr("Modalità punto: si ferma su ogni punto e accende il laser a potenza costante, per un tempo che segue i grigi. Simile alla scala di grigi, più lento, ma con risultati eccellenti."),
+        ImageMode::Slice3D => tr("Spaccato 3D: per incisioni profonde da un'immagine in rilievo 3D in scala di grigi. Ogni passaggio incide una fetta: più scuro è il grigio, più passaggi lo incidono."),
     }
 }
 
@@ -1635,6 +1694,9 @@ fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
     let frame_nr = ui.ctx().cumulative_frame_nr();
     egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
         let used = app.doc.used_layers();
+        for &l in &used {
+            app.doc.lock_cut_mode(l);
+        }
         // the person's request: when the canvas selection changes, select the row of the last selected
         // object's layer (the original only keeps the previous row: UpdateCutList 0x100c993a8)
         if app.selection != app.row_follows {
@@ -1686,9 +1748,9 @@ fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
                             let r4 = cell(ui, format!("{:.0} / {:.0}", cs.speed, cs.max_power));
                             let (mut o, mut s, mut a) = (cs.output, cs.show, cs.air);
                             let mut ch = false;
-                            ch |= ui.checkbox(&mut o, "").changed();
-                            ch |= ui.checkbox(&mut s, "").changed();
-                            ch |= ui.checkbox(&mut a, "").changed();
+                            ch |= switch(ui, &mut o, "").changed();
+                            ch |= switch(ui, &mut s, "").changed();
+                            ch |= switch(ui, &mut a, "").changed();
                             ui.end_row();
                             if ch {
                                 app.checkpoint_now();
@@ -1765,11 +1827,7 @@ fn cuts_dock(app: &mut BeamForge, ui: &mut egui::Ui) {
             changed |= ui.add_enabled(min_on, crate::i18n::dv(&mut cs.min_power).speed(0.5).range(0.0..=100.0).max_decimals(2)).changed();
             ui.end_row();
             ui.label(tr("Modalità"));
-            egui::ComboBox::from_id_salt("quick_mode").selected_text(mode_it(cs.mode)).show_ui(ui, |ui| {
-                for m in [CutMode::Line, CutMode::Fill, CutMode::OffsetFill, CutMode::Image] {
-                    changed |= ui.selectable_value(&mut cs.mode, m, mode_it(m)).changed();
-                }
-            });
+            changed |= mode_combo(ui, "quick_mode", &mut cs, app.doc.layer_art(l), None);
             ui.end_row();
         });
         if ui.button(tr("Altre impostazioni…")).clicked() {
@@ -1913,8 +1971,8 @@ fn laser_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
         });
         ui.end_row();
     });
-    ui.checkbox(&mut app.job_opts.selected_only, tr("Taglia la grafica selezionata"));
-    ui.checkbox(&mut app.job_opts.optimize, tr("Ottimizza il percorso (interni prima, percorso più breve)"));
+    switch(ui, &mut app.job_opts.selected_only, tr("Taglia la grafica selezionata"));
+    switch(ui, &mut app.job_opts.optimize, tr("Ottimizza il percorso (interni prima, percorso più breve)"));
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         if ui.add(egui::Button::new(tr("Periferiche")).min_size(vec2(100.0, 26.0))).clicked() {
@@ -2059,6 +2117,7 @@ fn shape_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
     }
     let id = app.selection[0];
     let Some(mut s) = app.doc.find(id).cloned() else { return };
+    let old_layer = s.layer;
     let mut changed = false;
     egui::Grid::new("shape_props").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
         ui.label(tr("Tipo"));
@@ -2152,9 +2211,12 @@ fn shape_tab(app: &mut BeamForge, ui: &mut egui::Ui) {
     if changed {
         app.checkpoint(frame_nr);
         app.doc.touch_layer(s.layer);
+        let new_layer = s.layer;
         if let Some(t) = app.doc.find_mut(id) {
             *t = s;
         }
+        app.doc.lock_cut_mode(old_layer);
+        app.doc.lock_cut_mode(new_layer);
     }
 }
 
@@ -2201,10 +2263,10 @@ fn offset_window(app: &mut BeamForge, ctx: &egui::Context) {
                 }
             });
             group(ui, tr("Opzioni"), &mut |ui| {
-                changed |= ui.checkbox(&mut s.outer_only, tr("Solo forme esterne")).changed();
-                changed |= ui.checkbox(&mut s.select_results, tr("Seleziona oggetti risultanti")).changed();
-                changed |= ui.checkbox(&mut s.delete_originals, tr("Elimina oggetti originali")).changed();
-                changed |= ui.checkbox(&mut s.optimize, tr("Ottimizza / Semplifica risultati")).changed();
+                changed |= switch(ui, &mut s.outer_only, tr("Solo forme esterne")).changed();
+                changed |= switch(ui, &mut s.select_results, tr("Seleziona oggetti risultanti")).changed();
+                changed |= switch(ui, &mut s.delete_originals, tr("Elimina oggetti originali")).changed();
+                changed |= switch(ui, &mut s.optimize, tr("Ottimizza / Semplifica risultati")).changed();
             });
         });
         if app.offset_overlap {
@@ -2249,15 +2311,15 @@ fn fill_editor(ui: &mut egui::Ui, cs: &mut CutSetting, tab: u8) -> bool {
             ui.vertical(|ui| {
                 egui::Grid::new("editor_fill").num_columns(3).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
                     ui.add_enabled_ui(scan, |ui| {
-                        changed |= ui.checkbox(&mut cs.bidir, tr("Riempimento bidirezionale")).changed();
+                        changed |= switch(ui, &mut cs.bidir, tr("Riempimento bidirezionale")).changed();
                     });
                     ui.add_enabled_ui(scan, |ui| {
-                        changed |= ui.checkbox(&mut cs.crosshatch, tr("Tratteggio incrociato")).changed();
+                        changed |= switch(ui, &mut cs.crosshatch, tr("Tratteggio incrociato")).changed();
                     });
                     ui.label("");
                     ui.end_row();
                     ui.add_enabled_ui(scan, |ui| {
-                        changed |= ui.checkbox(&mut cs.overscan, tr("Sovrascansione")).changed();
+                        changed |= switch(ui, &mut cs.overscan, tr("Sovrascansione")).changed();
                     });
                     changed |= ui.add_enabled(scan && cs.overscan, dv(&mut cs.overscan_percent).speed(0.1).range(0.0..=50.0).max_decimals(1).suffix("%")).changed();
                     // CutSettingEdit::UpdateOverscanDistance 0x100b877f4: speed (mm/s) × % / 100, "%2.2f"
@@ -2321,12 +2383,12 @@ fn fill_editor(ui: &mut egui::Ui, cs: &mut CutSetting, tab: u8) -> bool {
             ui.end_row();
             ui.label("");
             ui.add_enabled_ui(cs.ramp_length > 0.0, |ui| {
-                changed |= ui.checkbox(&mut cs.ramp_outer, tr("Bordo esterno rampa")).on_hover_text(tr("Rampa solo sui bordi esterni, non sui fori")).changed();
+                changed |= switch(ui, &mut cs.ramp_outer, tr("Bordo esterno rampa")).on_hover_text(tr("Rampa solo sui bordi esterni, non sui fori")).changed();
             });
             ui.end_row();
         });
         ui.separator();
-        changed |= ui.checkbox(&mut cs.flood_fill, tr("Riempimento completo")).on_hover_text(tr("Riempie zona per zona, senza attraversare gli spazi vuoti")).changed();
+        changed |= switch(ui, &mut cs.flood_fill, tr("Riempimento completo")).on_hover_text(tr("Riempie zona per zona, senza attraversare gli spazi vuoti")).changed();
     } else {
         ui.label(egui::RichText::new(tr("Nessuna opzione avanzata per il riempimento offset.")).color(crate::theme::p().text_dim));
     }
@@ -2409,9 +2471,313 @@ fn arrow_head(p: &egui::Painter, from: Pos2, to: Pos2, col: Color32) {
     p.add(egui::Shape::convex_polygon(vec![to, a, b], col, Stroke::NONE));
 }
 
+fn paint_switch(p: &egui::Painter, rect: Rect, on: bool, enabled: bool) {
+    let mut bg = if on { Color32::from_rgb(76, 217, 100) } else { Color32::from_rgb(255, 69, 58) };
+    if !enabled {
+        bg = bg.gamma_multiply(0.4);
+    }
+    p.rect_filled(rect, rect.height() * 0.5, bg);
+    let knob_r = (rect.height() * 0.5 - 1.5).max(2.5);
+    let cx = if on { rect.right() - knob_r - 1.5 } else { rect.left() + knob_r + 1.5 };
+    let knob = pos2(cx, rect.center().y);
+    p.circle_filled(knob, knob_r, if enabled { Color32::WHITE } else { Color32::from_rgb(230, 230, 230) });
+    p.circle_stroke(knob, knob_r, Stroke::new(0.6, Color32::from_black_alpha(40)));
+}
+
+/// One size for every green/red switch in every window (the person's request: all the coloured
+/// switches the same size), tall enough to read at a glance and still within a normal row.
+pub const SWITCH_SIZE: egui::Vec2 = egui::Vec2::new(34.0, 18.0);
+
+/// Green when on, red when off, without a label.
+fn pill_toggle(ui: &mut egui::Ui, on: &mut bool) -> bool {
+    switch_at(ui, on, "", SWITCH_SIZE).clicked()
+}
+
+/// The same switch with its label beside it.
+pub fn switch(ui: &mut egui::Ui, on: &mut bool, text: impl Into<egui::WidgetText>) -> egui::Response {
+    switch_at(ui, on, text, SWITCH_SIZE)
+}
+
+fn switch_at(ui: &mut egui::Ui, on: &mut bool, text: impl Into<egui::WidgetText>, pill: egui::Vec2) -> egui::Response {
+    let galley = text.into().into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body);
+    let tw = galley.size().x;
+    let gap = if tw < 1.0 { 0.0 } else { 4.0 };
+    let h = pill.y.max(galley.size().y);
+    let (rect, mut resp) = ui.allocate_exact_size(vec2(pill.x + gap + tw, h), Sense::click());
+    let enabled = ui.is_enabled();
+    if resp.clicked() && enabled {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    let pill_rect = Rect::from_min_size(pos2(rect.left(), rect.center().y - pill.y * 0.5), pill);
+    paint_switch(ui.painter(), pill_rect, *on, enabled);
+    if tw >= 1.0 {
+        let color = ui.visuals().text_color();
+        ui.painter().galley(pos2(pill_rect.right() + gap, rect.center().y - galley.size().y * 0.5), galley, color);
+    }
+    resp
+}
+
+fn right_label(ui: &mut egui::Ui, text: &str) {
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.label(text);
+    });
+}
+
+/// The Image page of the cut-settings editor: scan switches, the ten image modes,
+/// the dithering example, and the buttons along the bottom.
+fn image_settings(ui: &mut egui::Ui, cs: &mut CutSetting, layer: usize, art: LayerArt, action: &mut Option<&'static str>) -> bool {
+    let dv = crate::i18n::dv;
+    let mut changed = false;
+    ui.set_min_width(740.0);
+
+    ui.horizontal_top(|ui| {
+        let col = layer_color(layer);
+        let (badge, _) = ui.allocate_exact_size(vec2(36.0, 26.0), Sense::hover());
+        ui.painter().rect_filled(badge, 3.0, col);
+        ui.painter().rect_stroke(badge, 3.0, Stroke::new(2.0, Color32::from_rgb(40, 120, 220)), StrokeKind::Inside);
+        let ink = {
+            let l = col.r() as u16 + col.g() as u16 + col.b() as u16;
+            if l < 380 { Color32::WHITE } else { Color32::BLACK }
+        };
+        ui.painter().text(
+            badge.center(),
+            egui::Align2::CENTER_CENTER,
+            format!("{:02}", layer.min(99)),
+            egui::FontId::proportional(12.0),
+            ink,
+        );
+        let (bar, _) = ui.allocate_exact_size(vec2(150.0, 22.0), Sense::hover());
+        ui.painter().rect_filled(bar, 2.0, col);
+        ui.painter().rect_stroke(bar, 2.0, Stroke::new(1.0, Color32::from_black_alpha(80)), StrokeKind::Inside);
+
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.label(tr("Nome"));
+                changed |= ui.add(egui::TextEdit::singleline(&mut cs.name).desired_width(200.0)).changed();
+                ui.add_space(8.0);
+                changed |= pill_toggle(ui, &mut cs.output);
+                ui.label(tr("Risultato"));
+            });
+            egui::Grid::new("image_head").num_columns(2).spacing(vec2(10.0, 4.0)).show(ui, |ui| {
+                right_label(ui, tr("Velocità (mm/min)"));
+                ui.horizontal(|ui| {
+                    changed |= ui.add_sized(vec2(88.0, 20.0), dv(&mut cs.speed).speed(10.0).range(0.1..=60000.0).min_decimals(1).max_decimals(1)).changed();
+                    ui.add_space(8.0);
+                    changed |= pill_toggle(ui, &mut cs.air);
+                    ui.label(tr("Air assist"));
+                });
+                ui.end_row();
+                right_label(ui, tr("Potenza max (%)"));
+                changed |= ui.add_sized(vec2(88.0, 20.0), dv(&mut cs.max_power).speed(0.5).range(0.0..=100.0).min_decimals(2).max_decimals(2)).changed();
+                ui.end_row();
+                right_label(ui, tr("Potenza minima (%)"));
+                changed |= ui.add_sized(vec2(88.0, 20.0), dv(&mut cs.min_power).speed(0.5).range(0.0..=100.0).min_decimals(2).max_decimals(2)).changed();
+                ui.end_row();
+                right_label(ui, tr("Modalità"));
+                changed |= mode_combo(ui, "ed_mode_img", cs, art, Some(160.0));
+                ui.end_row();
+            });
+        });
+    });
+
+    ui.add_space(6.0);
+    let tab_btn = egui::Button::new(tr("Comune")).fill(crate::theme::p().window_fill).stroke(Stroke::new(1.0, crate::theme::p().line));
+    let _ = ui.add(tab_btn);
+    egui::Frame::new()
+        .stroke(Stroke::new(1.0, crate::theme::p().line))
+        .inner_margin(egui::Margin::same(10))
+        .show(ui, |ui| {
+            ui.horizontal_top(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(300.0);
+                    let (r, _) = ui.allocate_exact_size(vec2(140.0, 96.0), Sense::hover());
+                    scan_pattern(ui.painter(), r, cs);
+                    ui.add_space(6.0);
+                    for (g, l) in [
+                        (FillGrouping::MergeAll, tr("Riempi tutte le forme contemporaneamente")),
+                        (FillGrouping::ByGroup, tr("Riempi i gruppi insieme")),
+                        (FillGrouping::Individual, tr("Riempi le forme singolarmente")),
+                    ] {
+                        ui.allocate_ui_with_layout(vec2(300.0, 22.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            changed |= ui.radio_value(&mut cs.fill_grouping, g, "").changed();
+                            ui.label(l);
+                        });
+                    }
+                });
+                ui.vertical(|ui| {
+                    egui::Grid::new("image_fields").num_columns(4).spacing(vec2(8.0, 6.0)).striped(false).show(ui, |ui| {
+                        right_label(ui, tr("Scansione bidirezionale"));
+                        changed |= pill_toggle(ui, &mut cs.bidir);
+                        right_label(ui, tr("Negativo"));
+                        changed |= pill_toggle(ui, &mut cs.negative);
+                        ui.end_row();
+
+                        right_label(ui, tr("Intervallo linea (mm)"));
+                        changed |= ui.add_sized(vec2(84.0, 20.0), dv(&mut cs.interval).speed(0.001).range(0.01..=5.0).min_decimals(4).max_decimals(4)).changed();
+                        let mut dpi = lines_per_inch(cs.interval);
+                        if ui.add_sized(vec2(72.0, 20.0), dv(&mut dpi).speed(1.0).range(5.0..=2540.0).max_decimals(0)).changed() {
+                            cs.interval = interval_from_lpi(dpi.round().max(1.0));
+                            changed = true;
+                        }
+                        ui.label(tr("DPI"));
+                        ui.end_row();
+
+                        right_label(ui, tr("Angolo di scansione (gradi)"));
+                        changed |= ui.add_sized(vec2(84.0, 20.0), dv(&mut cs.angle).speed(1.0).range(-360.0..=360.0).max_decimals(0)).changed();
+                        ui.label("");
+                        ui.label("");
+                        ui.end_row();
+
+                        right_label(ui, tr("Correzione larghezza punto"));
+                        ui.horizontal(|ui| {
+                            changed |= pill_toggle(ui, &mut cs.dot_width_on);
+                            ui.add_enabled_ui(cs.dot_width_on, |ui| {
+                                changed |= ui.add_sized(vec2(72.0, 20.0), dv(&mut cs.dot_width).speed(0.005).range(0.0..=2.0).min_decimals(3).max_decimals(3)).changed();
+                            });
+                        });
+                        ui.label("");
+                        ui.label("");
+                        ui.end_row();
+
+                        right_label(ui, tr("Modalità immagine"));
+                        ui.add_enabled_ui(!cs.pass_through, |ui| {
+                            egui::ComboBox::from_id_salt("ed_img").width(140.0).selected_text(image_mode_it(cs.image_mode)).show_ui(ui, |ui| {
+                                for m in ImageMode::ALL {
+                                    changed |= ui.selectable_value(&mut cs.image_mode, m, image_mode_it(m)).changed();
+                                }
+                            });
+                        });
+                        right_label(ui, tr("Pass-through"));
+                        changed |= pill_toggle(ui, &mut cs.pass_through);
+                        ui.end_row();
+
+                        right_label(ui, tr("Celle per pollice"));
+                        changed |= ui.add_sized(vec2(84.0, 20.0), dv(&mut cs.cells_per_inch).speed(1.0).range(5.0..=300.0).min_decimals(1).max_decimals(1))
+                            .on_hover_text(tr("Dimensione dei punti in modalità Mezzitoni")).changed();
+                        // Dot mode's own two numbers sit in the free right-hand cells, so the
+                        // window keeps its size when the mode changes (the person's request)
+                        let dot = cs.image_mode == ImageMode::Dot && !cs.pass_through;
+                        ui.add_enabled(dot, egui::Label::new(tr("Tempo punto (ms)")));
+                        changed |= ui.add_enabled(dot, dv(&mut cs.dot_time_ms).speed(0.05).range(0.01..=1000.0).min_decimals(2).max_decimals(2))
+                            .on_hover_text(tr("Quanto resta acceso il laser su un punto nero; i grigi più chiari restano accesi meno")).changed();
+                        ui.end_row();
+
+                        right_label(ui, tr("Angolo di mezzitoni"));
+                        changed |= ui.add_sized(vec2(84.0, 20.0), dv(&mut cs.halftone_angle).speed(0.5).range(0.0..=180.0).min_decimals(1).max_decimals(1))
+                            .on_hover_text(tr("Rotazione dei punti in modalità Mezzitoni")).changed();
+                        ui.add_enabled(dot, egui::Label::new(tr("Spaziatura punti (mm)")));
+                        changed |= ui.add_enabled(dot, dv(&mut cs.dot_spacing).speed(0.005).range(0.01..=5.0).min_decimals(3).max_decimals(3))
+                            .on_hover_text(tr("Distanza tra un punto e il successivo lungo la linea")).changed();
+                        ui.end_row();
+
+                        right_label(ui, tr("Numero di passaggi"));
+                        changed |= ui.add_sized(vec2(84.0, 20.0), egui::DragValue::new(&mut cs.passes).range(1..=1000)).changed();
+                        // the original warns when a 3D Slice layer has a single pass
+                        if cs.image_mode == ImageMode::Slice3D && !cs.pass_through && cs.passes <= 1 {
+                            ui.label(egui::RichText::new("⚠").color(Color32::from_rgb(240, 180, 40)))
+                                .on_hover_text(tr("Spaccato 3D con un solo passaggio: ogni passaggio incide una fetta, aumentali per incidere in profondità"));
+                        } else {
+                            ui.label("");
+                        }
+                        ui.label("");
+                        ui.end_row();
+
+                        right_label(ui, tr("Lunghezza rampa"));
+                        changed |= ui.add_sized(vec2(84.0, 20.0), dv(&mut cs.ramp_length).speed(0.05).range(0.0..=100.0).min_decimals(2).max_decimals(2))
+                            .on_hover_text(tr("La potenza sale dal minimo al massimo entro questa distanza dal bordo (mm)")).changed();
+                        ui.label("");
+                        ui.label("");
+                        ui.end_row();
+                    });
+                });
+            });
+
+            ui.add_space(8.0);
+            ui.horizontal_top(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(360.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new(tr("Esempio di dithering")).small());
+                    });
+                    let (wpx, hpx) = (340usize, 72usize);
+                    let rgba = dither_example_rgba(cs, wpx, hpx);
+                    let img = egui::ColorImage::from_rgba_unmultiplied([wpx, hpx], &rgba);
+                    let tex = ui.ctx().load_texture("bf_dither_example", img, egui::TextureOptions::NEAREST);
+                    let (r, _) = ui.allocate_exact_size(vec2(wpx as f32, hpx as f32), Sense::hover());
+                    ui.painter().image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                    ui.painter().rect_stroke(r, 0.0, Stroke::new(1.0, Color32::from_rgb(160, 160, 160)), StrokeKind::Inside);
+                });
+                ui.add_space(12.0);
+                // a fixed box for the description, wrapped inside it, so a longer text for another
+                // image mode never makes the window wider or taller (the person's request)
+                ui.allocate_ui_with_layout(vec2(280.0, 96.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_min_size(vec2(280.0, 96.0));
+                    ui.set_max_width(280.0);
+                    ui.add_space(18.0);
+                    let text = if cs.pass_through {
+                        tr("Pass-through: l'immagine va al laser con la potenza che segue i grigi, senza il motivo della modalità scelta.")
+                    } else {
+                        image_mode_blurb(cs.image_mode)
+                    };
+                    ui.add(egui::Label::new(egui::RichText::new(text).size(13.0)).wrap());
+                });
+            });
+        });
+
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        if ui.button(tr("Resetta a predefinito")).clicked() {
+            *action = Some("reset");
+        }
+        if ui.button(tr("Rendi predefinito")).clicked() {
+            *action = Some("default");
+        }
+        if ui.button(tr("Rendi predefinito per tutti")).clicked() {
+            *action = Some("default_all");
+        }
+    });
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let ok = egui::Button::new(egui::RichText::new("OK").strong())
+            .min_size(vec2(78.0, 24.0))
+            .fill(Color32::from_rgb(232, 242, 255))
+            .stroke(Stroke::new(2.0, Color32::from_rgb(0, 122, 255)));
+        if ui.add(ok).clicked() {
+            *action = Some("ok");
+        }
+        if ui.add(egui::Button::new("Cancel").min_size(vec2(78.0, 24.0))).clicked() {
+            *action = Some("cancel");
+        }
+    });
+    changed
+}
+
+/// Black dots on white for a binary mode, grey for grayscale and pass-through.
+fn dither_example_rgba(cs: &CutSetting, w: usize, h: usize) -> Vec<u8> {
+    let grid = crate::imageproc::example_grid(cs, w, h);
+    // Dot and 3D Slice keep the grey too: dots stop longer, slices burn deeper where it is darker
+    let continuous = cs.pass_through || matches!(cs.image_mode, ImageMode::Grayscale | ImageMode::Dot | ImageMode::Slice3D);
+    let mut rgba = Vec::with_capacity(w * h * 4);
+    for v in grid {
+        let g = if v < 0.0 {
+            255
+        } else if continuous {
+            (255.0 * (1.0 - v.clamp(0.0, 1.0))) as u8
+        } else if v >= 0.5 {
+            0
+        } else {
+            255
+        };
+        rgba.extend_from_slice(&[g, g, g, 255]);
+    }
+    rgba
+}
+
 pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
     offset_window(app, ctx);
     if let Some(l) = app.editor_layer {
+        app.doc.lock_cut_mode(l);
+        let art = app.doc.layer_art(l);
         // snapshot the layer when the editor opens, so Annulla can put it back
         if app.editor_orig.as_ref().map(|(i, _)| *i) != Some(l) {
             app.editor_orig = Some((l, app.doc.layers[l].clone()));
@@ -2425,7 +2791,16 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
         let mut confirm_auto = ctx.data(|d| d.get_temp::<bool>(confirm_id)).unwrap_or(false);
         let mut action: Option<&'static str> = None;
         let dv = crate::i18n::dv;
-        theme::centered(ctx, "cut_editor", egui::Window::new(trf("Editor impostazioni di taglio — {}", &[&layer_name(l)])).open(&mut open).resizable(false).collapsible(false).min_width(440.0)).show(ctx, |ui| {
+        let image = cs.mode == CutMode::Image;
+        let (key, title) = if image {
+            ("image_editor", tr("Editor impostazioni di taglio").to_string())
+        } else {
+            ("cut_editor", trf("Editor impostazioni di taglio — {}", &[&layer_name(l)]))
+        };
+        theme::centered(ctx, key, egui::Window::new(title).open(&mut open).resizable(false).collapsible(false).min_width(440.0)).show(ctx, |ui| {
+            if image {
+                changed |= image_settings(ui, &mut cs, l, art, &mut action);
+            } else {
             egui::Grid::new("editor").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
                 ui.label(tr("Nome"));
                 changed |= ui.text_edit_singleline(&mut cs.name).changed();
@@ -2434,11 +2809,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                 changed |= ui.text_edit_singleline(&mut cs.sub_name).changed();
                 ui.end_row();
                 ui.label(tr("Modalità"));
-                egui::ComboBox::from_id_salt("ed_mode").selected_text(mode_it(cs.mode)).show_ui(ui, |ui| {
-                    for m in [CutMode::Line, CutMode::Fill, CutMode::OffsetFill, CutMode::Image] {
-                        changed |= ui.selectable_value(&mut cs.mode, m, mode_it(m)).changed();
-                    }
-                });
+                changed |= mode_combo(ui, "ed_mode", &mut cs, art, None);
                 ui.end_row();
                 ui.label(tr("Velocità (mm/min)"));
                 changed |= ui.add(dv(&mut cs.speed).speed(10.0).range(0.1..=60000.0)).changed();
@@ -2456,13 +2827,13 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                 changed |= ui.add_enabled(min_on, dv(&mut cs.min_power).speed(0.5).range(0.0..=100.0).min_decimals(2).max_decimals(2)).changed();
                 ui.end_row();
                 ui.label("");
-                changed |= ui.checkbox(&mut cs.constant_power, tr("Modalità potenza costante")).on_hover_text(tr("Il laser resta a potenza costante (M3) anche nelle curve")).changed();
+                changed |= switch(ui, &mut cs.constant_power, tr("Modalità potenza costante")).on_hover_text(tr("Il laser resta a potenza costante (M3) anche nelle curve")).changed();
                 ui.end_row();
                 ui.label(tr("Opzioni"));
                 ui.horizontal(|ui| {
-                    changed |= ui.checkbox(&mut cs.output, tr("Emissione")).changed();
-                    changed |= ui.checkbox(&mut cs.show, tr("Mostra")).changed();
-                    changed |= ui.checkbox(&mut cs.air, tr("Aria")).changed();
+                    changed |= switch(ui, &mut cs.output, tr("Emissione")).changed();
+                    changed |= switch(ui, &mut cs.show, tr("Mostra")).changed();
+                    changed |= switch(ui, &mut cs.air, tr("Aria")).changed();
                 });
                 ui.end_row();
             });
@@ -2483,7 +2854,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                     if line {
                         ui.label(tr("Offset kerf (mm)"));
                         ui.horizontal(|ui| {
-                            changed |= ui.checkbox(&mut cs.kerf_enabled, "").changed();
+                            changed |= switch(ui, &mut cs.kerf_enabled, "").changed();
                             changed |= ui.add_enabled(cs.kerf_enabled, dv(&mut cs.kerf).speed(0.01).range(-5.0..=5.0).max_decimals(3)).changed();
                             // UpdateKerfLabel 0x100b8a98c: the full value is applied; its sign picks the side
                             let dir = if !cs.kerf_enabled || cs.kerf == 0.0 {
@@ -2498,7 +2869,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                         ui.end_row();
                         ui.label(tr("Modalità perforazione"));
                         ui.horizontal(|ui| {
-                            changed |= ui.checkbox(&mut cs.perforate, "").changed();
+                            changed |= switch(ui, &mut cs.perforate, "").changed();
                             ui.label(tr("Taglio"));
                             changed |= ui.add_enabled(cs.perforate, dv(&mut cs.perf_len).speed(0.01).range(0.01..=100.0).max_decimals(2)).changed();
                             ui.label(tr("Salta"));
@@ -2517,31 +2888,20 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                         ui.end_row();
                         ui.label(tr("Scansione"));
                         ui.horizontal(|ui| {
-                            changed |= ui.checkbox(&mut cs.bidir, tr("Bidirezionale")).changed();
+                            changed |= switch(ui, &mut cs.bidir, tr("Bidirezionale")).changed();
                             if cs.mode == CutMode::Fill {
-                                changed |= ui.checkbox(&mut cs.crosshatch, tr("Tratteggio incrociato")).changed();
+                                changed |= switch(ui, &mut cs.crosshatch, tr("Tratteggio incrociato")).changed();
                             }
                         });
                         ui.end_row();
                     }
-                    if cs.mode == CutMode::Image {
-                        ui.label(tr("Modalità immagine"));
-                        egui::ComboBox::from_id_salt("ed_img").selected_text(image_mode_it(cs.image_mode)).show_ui(ui, |ui| {
-                            for m in [ImageMode::Threshold, ImageMode::Dithered, ImageMode::Grayscale] {
-                                changed |= ui.selectable_value(&mut cs.image_mode, m, image_mode_it(m)).changed();
-                            }
-                        });
-                        ui.end_row();
-                        ui.label(tr("Negativo"));
-                        changed |= ui.checkbox(&mut cs.negative, tr("Inverti l'immagine")).changed();
-                        ui.end_row();
-                    }
+
                 });
                 if line {
                     ui.add_space(6.0);
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
-                            changed |= ui.checkbox(&mut cs.tabs_enabled, egui::RichText::new(tr("Linguette / Ponti")).strong()).changed();
+                            changed |= switch(ui, &mut cs.tabs_enabled, egui::RichText::new(tr("Linguette / Ponti")).strong()).changed();
                         });
                         ui.add_enabled_ui(cs.tabs_enabled, |ui| {
                             egui::Grid::new("editor_tabs").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
@@ -2583,7 +2943,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                                 });
                                 ui.end_row();
                                 ui.add_enabled_ui(!cs.manual_tabs, |ui| {
-                                    changed |= ui.checkbox(&mut cs.limit_max_tabs, tr("Limita linguette max")).changed();
+                                    changed |= switch(ui, &mut cs.limit_max_tabs, tr("Limita linguette max")).changed();
                                 });
                                 if ui.add_enabled(!cs.manual_tabs && cs.tabs_use_spacing && cs.limit_max_tabs, egui::DragValue::new(&mut cs.tab_count_max).range(1..=100)).changed() {
                                     changed = true;
@@ -2592,7 +2952,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                                     }
                                 }
                                 ui.end_row();
-                                changed |= ui.checkbox(&mut cs.tab_power_enabled, tr("Potenza taglio linguette (%)")).changed();
+                                changed |= switch(ui, &mut cs.tab_power_enabled, tr("Potenza taglio linguette (%)")).changed();
                                 changed |= ui.add_enabled(cs.tab_power_enabled, dv(&mut cs.tab_cut_power).speed(0.5).range(0.0..=100.0)).changed();
                                 ui.end_row();
                             });
@@ -2600,7 +2960,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                                 if ui.button(tr("Cancella linguette")).clicked() {
                                     action = Some("clear_tabs");
                                 }
-                                changed |= ui.checkbox(&mut cs.skip_inner_tabs, tr("Ignora forme interne")).changed();
+                                changed |= switch(ui, &mut cs.skip_inner_tabs, tr("Ignora forme interne")).changed();
                             });
                             if cs.manual_tabs {
                                 ui.horizontal(|ui| {
@@ -2620,7 +2980,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                         ui.label(tr("Sovrataglio (mm)"));
                         changed |= ui.add(dv(&mut cs.overcut).speed(0.05).range(0.0..=100.0).max_decimals(2)).changed();
                         ui.end_row();
-                        changed |= ui.checkbox(&mut cs.lead_in, tr("Aggiungi lead-in")).changed();
+                        changed |= switch(ui, &mut cs.lead_in, tr("Aggiungi lead-in")).changed();
                         ui.horizontal(|ui| {
                             ui.label(tr("Lunghezza"));
                             changed |= ui.add_enabled(cs.lead_in, dv(&mut cs.lead_in_len).speed(0.05).range(0.0..=100.0).max_decimals(2)).changed();
@@ -2628,7 +2988,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                             changed |= ui.add_enabled(cs.lead_in, dv(&mut cs.lead_in_angle).speed(1.0).range(0.0..=180.0)).changed();
                         });
                         ui.end_row();
-                        changed |= ui.checkbox(&mut cs.lead_out, tr("Aggiungi lead-out")).changed();
+                        changed |= switch(ui, &mut cs.lead_out, tr("Aggiungi lead-out")).changed();
                         ui.horizontal(|ui| {
                             ui.label(tr("Lunghezza"));
                             changed |= ui.add_enabled(cs.lead_out, dv(&mut cs.lead_out_len).speed(0.05).range(0.0..=100.0).max_decimals(2)).changed();
@@ -2645,7 +3005,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                     } else {
                         ui.label(tr("Overscan"));
                         ui.horizontal(|ui| {
-                            changed |= ui.checkbox(&mut cs.overscan, "").changed();
+                            changed |= switch(ui, &mut cs.overscan, "").changed();
                             changed |= ui.add_enabled(cs.overscan, dv(&mut cs.overscan_percent).speed(0.1).range(0.0..=50.0).suffix(tr(" % della velocità"))).changed();
                         });
                         ui.end_row();
@@ -2672,6 +3032,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                     action = Some("cancel");
                 }
             });
+            }
         });
         app.editor_tab = tab;
         if confirm_auto {
@@ -2737,6 +3098,7 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
             if cs.min_power > cs.max_power {
                 cs.min_power = cs.max_power;
             }
+            cs.mode = app.doc.layer_art(l).clamp(cs.mode);
             app.checkpoint(ctx.cumulative_frame_nr());
             app.doc.layers[l] = cs;
         }
@@ -2791,16 +3153,16 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
                 ui.add(crate::i18n::dv(&mut d.s_max).speed(10.0).range(1.0..=100000.0));
                 ui.end_row();
                 ui.label(tr("Potenza dinamica"));
-                ui.checkbox(&mut d.dynamic_power, tr("M4 (spenta: M3 potenza costante)"));
+                switch(ui, &mut d.dynamic_power, tr("M4 (spenta: M3 potenza costante)"));
                 ui.end_row();
                 ui.label(tr("Aria compressa"));
-                ui.checkbox(&mut d.air_assist_m7, tr("Usa M7 invece di M8"));
+                switch(ui, &mut d.air_assist_m7, tr("Usa M7 invece di M8"));
                 ui.end_row();
                 ui.label(tr("Potenza Fuoco (%)"));
                 ui.add(crate::i18n::dv(&mut d.fire_power).speed(0.1).range(0.0..=100.0));
                 ui.end_row();
                 ui.label(tr("Inquadra con laser acceso"));
-                ui.checkbox(&mut d.laser_frame, tr("Raggio continuo all'1%"));
+                switch(ui, &mut d.laser_frame, tr("Raggio continuo all'1%"));
                 ui.end_row();
                 ui.label(tr("Velocità rapidi (mm/s)"));
                 ui.add(crate::i18n::dv(&mut d.rapid_speed).speed(1.0).range(1.0..=2000.0));
@@ -2845,57 +3207,8 @@ pub fn windows(app: &mut BeamForge, ctx: &egui::Context) {
         }
     }
 
-    if app.show_settings {
-        let mut open = true;
-        let current_choice = crate::i18n::load_choice();
-        let mut picked: Option<Option<crate::i18n::Lang>> = None;
-        theme::centered(ctx, "settings", egui::Window::new(tr("Impostazioni")).open(&mut open).resizable(false).collapsible(false)).show(ctx, |ui| {
-            egui::Grid::new("settings").num_columns(2).spacing(vec2(12.0, 8.0)).show(ui, |ui| {
-                ui.label(tr("Lingua"));
-                let shown = match current_choice {
-                    None => tr("Automatica (lingua di sistema)").to_string(),
-                    Some(l) => l.native_name().to_string(),
-                };
-                egui::ComboBox::from_id_salt("language").width(240.0).selected_text(shown).show_ui(ui, |ui| {
-                    if ui.selectable_label(current_choice.is_none(), tr("Automatica (lingua di sistema)")).clicked() {
-                        picked = Some(None);
-                    }
-                    for l in crate::i18n::ALL {
-                        if ui.selectable_label(current_choice == Some(l), l.native_name()).clicked() {
-                            picked = Some(Some(l));
-                        }
-                    }
-                });
-                ui.end_row();
-                // light/dark theme (the original offers Classic Light / Classic Dark, Core_Theme 0x1007295dc)
-                ui.label(tr("Tema"));
-                let light = theme::p().light;
-                ui.horizontal(|ui| {
-                    if ui.selectable_label(!light, tr("Scuro")).clicked() && light {
-                        theme::set_light(ctx, false);
-                        theme::save_light(false);
-                    }
-                    if ui.selectable_label(light, tr("Chiaro")).clicked() && !light {
-                        theme::set_light(ctx, true);
-                        theme::save_light(true);
-                    }
-                });
-                ui.end_row();
-            });
-            ui.label(egui::RichText::new(trf("Lingua di sistema rilevata: {}", &[&crate::i18n::system_lang().native_name()])).color(crate::theme::p().text_dim));
-            ui.label(egui::RichText::new(tr("La lingua cambia subito in tutta l'app e viene ricordata.")).color(crate::theme::p().text_dim));
-            ui.separator();
-            if ui.button(tr("Impostazioni dispositivo…")).clicked() {
-                app.show_device = true;
-            }
-        });
-        if let Some(choice) = picked {
-            app.set_language(choice, ctx);
-        }
-        if !open {
-            app.show_settings = false;
-        }
-    }
+    // Impostazioni: the original's six tabs (settings_ui.rs)
+    crate::settings_ui::window(app, ctx);
 
     if app.show_about {
         let mut open = true;
@@ -3077,7 +3390,7 @@ fn updates_window(app: &mut BeamForge, ctx: &egui::Context) {
             }
         });
         let mut auto = crate::i18n::load_json::<bool>("update_auto.json").unwrap_or(true);
-        if ui.checkbox(&mut auto, tr("Controlla gli aggiornamenti una volta al giorno")).changed() {
+        if switch(ui, &mut auto, tr("Controlla gli aggiornamenti una volta al giorno")).changed() {
             crate::i18n::save_json("update_auto.json", &auto);
         }
     });

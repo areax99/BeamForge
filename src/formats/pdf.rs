@@ -13,7 +13,15 @@ pub const PT_MM: f64 = 25.4 / 72.0;
 pub fn import(bytes: &[u8]) -> Result<Vec<Piece>, String> {
     let head = &bytes[..bytes.len().min(1024)];
     let pieces = if find(head, b"%PDF").is_some() || find(bytes, b"/Type").is_some() && find(bytes, b" obj").is_some() {
-        read_pdf(bytes)?
+        match read_pdf(bytes) {
+            Ok(p) if !p.is_empty() => p,
+            // an .ai whose PDF page is empty (CorelDRAW's "Adobe Illustrator" export) keeps the
+            // drawing only in Illustrator's own data, which Illustrator reads instead of the page
+            other => {
+                let private = ai_private_data(bytes);
+                if private.is_empty() { other? } else { private }
+            }
+        }
     } else if find(head, b"%!PS").is_some() || find(bytes, b"%%EndSetup").is_some() {
         legacy_ai(bytes)
     } else {
@@ -23,6 +31,22 @@ pub fn import(bytes: &[u8]) -> Result<Vec<Piece>, String> {
         return Err(tr("Il file non contiene tracciati vettoriali utilizzabili.").into());
     }
     Ok(pieces)
+}
+
+/// EPS (the person asked; the original refuses these: "This file is an Embedded PostScript file,
+/// and is not supported", AITranslator::ReadAIContents 0x1000620a0). A DOS EPS (C5 D0 D3 C6) carries
+/// the PostScript at the offset/length in its 30-byte header, beside a TIFF/WMF preview; the
+/// PostScript itself is read like an old Illustrator file: Illustrator's EPS uses those operators,
+/// CorelDRAW's the same m/l/L/c/C with its own colour and close operators (see `legacy_ai`).
+pub fn eps(bytes: &[u8]) -> Result<Vec<Piece>, String> {
+    let ps = if bytes.starts_with(&[0xC5, 0xD0, 0xD3, 0xC6]) && bytes.len() >= 12 {
+        let off = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        let len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        bytes.get(off..off.saturating_add(len)).ok_or_else(|| tr("Il file EPS è danneggiato."))?
+    } else {
+        bytes
+    };
+    import(ps)
 }
 
 fn find(h: &[u8], n: &[u8]) -> Option<usize> {
@@ -244,10 +268,85 @@ fn decode(d: &HashMap<String, Obj>, raw: &[u8], pdf: &Pdf) -> Option<Vec<u8>> {
                 }
                 data = out;
             }
+            // Illustrator saves some PDF-compatible .ai files with the drawing ASCII-encoded first
+            "ASCIIHexDecode" | "AHx" => data = ascii_hex(&data),
+            "ASCII85Decode" | "A85" => data = ascii85(&data)?,
             _ => return None,
         }
     }
     Some(data)
+}
+
+/// ASCIIHexDecode (PDF 1.7 §7.4.2): hex digit pairs, whitespace ignored, ">" ends, an odd last digit
+/// counts as followed by 0.
+fn ascii_hex(data: &[u8]) -> Vec<u8> {
+    let digits: Vec<u8> = data
+        .iter()
+        .take_while(|c| **c != b'>')
+        .filter_map(|c| (*c as char).to_digit(16).map(|d| d as u8))
+        .collect();
+    digits.chunks(2).map(|p| (p[0] << 4) | p.get(1).copied().unwrap_or(0)).collect()
+}
+
+/// ASCII85Decode (PDF 1.7 §7.4.3): groups of five '!'..'u' characters make four bytes, 'z' four
+/// zero bytes, "~>" ends; a short last group is padded with 'u' and cut to its length − 1.
+fn ascii85(data: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut group: Vec<u32> = Vec::with_capacity(5);
+    let body = data.strip_prefix(b"<~").unwrap_or(data);
+    for &c in body {
+        match c {
+            b'~' => break,
+            b'z' if group.is_empty() => out.extend_from_slice(&[0, 0, 0, 0]),
+            b'!'..=b'u' => {
+                group.push((c - b'!') as u32);
+                if group.len() == 5 {
+                    let v = group.iter().fold(0u64, |a, d| a * 85 + *d as u64);
+                    out.extend_from_slice(&(u32::try_from(v).ok()?).to_be_bytes());
+                    group.clear();
+                }
+            }
+            _ => {}
+        }
+    }
+    if !group.is_empty() {
+        let n = group.len();
+        while group.len() < 5 {
+            group.push(84);
+        }
+        let v = group.iter().fold(0u64, |a, d| a * 85 + *d as u64);
+        out.extend_from_slice(&(v as u32).to_be_bytes()[..n - 1]);
+    }
+    Some(out)
+}
+
+/// Illustrator's own copy of the drawing inside a PDF-compatible .ai: the streams named
+/// /AIPrivateData1, 2, … (in that order) joined together are an old-style PostScript Illustrator
+/// file, read like one. Files whose private data is compressed further (%AI12_CompressedData) give
+/// nothing here.
+fn ai_private_data(b: &[u8]) -> Vec<Piece> {
+    let pdf = parse_pdf(b);
+    let mut parts: Vec<(u32, Obj)> = Vec::new();
+    for (o, _) in pdf.objs.values() {
+        if let Some(d) = o.dict() {
+            for (k, v) in d {
+                if let Some(n) = k.strip_prefix("AIPrivateData").and_then(|n| n.parse::<u32>().ok()) {
+                    parts.push((n, v.clone()));
+                }
+            }
+        }
+    }
+    parts.sort_by_key(|p| p.0);
+    let mut ps = Vec::new();
+    for (_, r) in &parts {
+        if let Some(data) = pdf.stream(r) {
+            ps.extend_from_slice(&data);
+        }
+    }
+    if ps.is_empty() || find(&ps[..ps.len().min(64)], b"%AI12_CompressedData").is_some() {
+        return Vec::new();
+    }
+    legacy_ai(&ps)
 }
 
 fn parse_pdf(b: &[u8]) -> Pdf {
@@ -672,6 +771,16 @@ fn legacy_ai(b: &[u8]) -> Vec<Piece> {
             "g" if n.len() == 1 => fill = color(&[1.0 - n[0]]).unwrap_or(fill),
             "XA" if n.len() == 3 => stroke = color(&n).unwrap_or(stroke),
             "Xa" if n.len() == 3 => fill = color(&n).unwrap_or(fill),
+            // CorelDRAW EPS: "r g b create_rgb_color set_outline", "c m y k create_cmyk_color set_solid_fill"
+            "set_outline" if n.len() == 3 || n.len() == 4 => stroke = color(&n).unwrap_or(stroke),
+            "set_solid_fill" if n.len() == 3 || n.len() == 4 => fill = color(&n).unwrap_or(fill),
+            // CorelDRAW's "@c" and PostScript's closepath close the subpath before it is painted
+            "@c" | "h" | "closepath" if n.is_empty() => {
+                if cur.len() > 1 {
+                    path.push(finish(std::mem::take(&mut cur), 1e-6).closed_anyway());
+                }
+                cur.clear();
+            }
             "S" | "s" | "f" | "F" | "b" | "B" | "n" | "N" if n.is_empty() => {
                 if cur.len() > 1 {
                     let pl = finish(std::mem::take(&mut cur), 1e-6);
@@ -753,5 +862,44 @@ mod ai_sample {
             Ok(p) => println!("RESULT OK {} pieces, {} paths, {} ms", p.len(), p.iter().map(|x| x.paths.len()).sum::<usize>(), ms),
             Err(e) => println!("RESULT ERR {e} ({ms} ms)"),
         }
+    }
+}
+
+#[cfg(test)]
+mod eps_sample {
+    /// `BEAMFORGE_EPS_FILE=x.eps cargo test eps_sample -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn eps_sample() {
+        let Ok(path) = std::env::var("BEAMFORGE_EPS_FILE") else { return };
+        let bytes = std::fs::read(&path).unwrap();
+        match super::eps(&bytes) {
+            Ok(p) => println!("RESULT OK {} pieces, {} paths", p.len(), p.iter().map(|x| x.paths.len()).sum::<usize>()),
+            Err(e) => println!("RESULT ERR {e}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod eps_tests {
+    /// A CorelDRAW-style EPS: a 72 × 72 pt (25.4 mm) square in red, closed with "@c",
+    /// inside a DOS EPS header as Corel writes it.
+    #[test]
+    fn corel_eps_square() {
+        let ps = "%!PS-Adobe-3.0 EPSF-3.0\n%%Creator: CorelDRAW\n%%EndSetup\n\
+                  1.0000 0.0000 0.0000  create_rgb_color set_outline\n\
+                  0 0 m\n72 0 L\n72 72 L\n0 72 L\n@c\nS\n%%Trailer\n";
+        let mut b = vec![0xC5, 0xD0, 0xD3, 0xC6];
+        b.extend_from_slice(&30u32.to_le_bytes());
+        b.extend_from_slice(&(ps.len() as u32).to_le_bytes());
+        b.resize(30, 0);
+        b.extend_from_slice(ps.as_bytes());
+        let p = super::eps(&b).unwrap();
+        assert_eq!(p.len(), 1);
+        let pl = &p[0].paths[0];
+        assert!(pl.closed);
+        let xs: Vec<f64> = pl.pts.iter().map(|q| q[0]).collect();
+        let w = xs.iter().cloned().fold(f64::MIN, f64::max) - xs.iter().cloned().fold(f64::MAX, f64::min);
+        assert!((w - 25.4).abs() < 1e-6, "width {w}");
     }
 }

@@ -80,19 +80,93 @@ impl CutMode {
     }
 }
 
+/// What is drawn on a layer, which decides which cut modes can be chosen.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LayerArt {
+    /// Nothing on the layer yet: every mode stays available.
+    Empty,
+    /// Only pictures. The mode stays Image.
+    Image,
+    /// Only vectors. Image cannot be chosen.
+    Vector,
+    /// Pictures and vectors together. The mode stays as it is.
+    Mixed,
+}
+
+impl LayerArt {
+    /// Line, Fill and Offset Fill are for vectors. Image is for pictures.
+    pub fn allows(self, mode: CutMode) -> bool {
+        match self {
+            LayerArt::Empty => true,
+            LayerArt::Image => mode == CutMode::Image,
+            LayerArt::Vector => mode != CutMode::Image,
+            LayerArt::Mixed => false,
+        }
+    }
+
+    /// The mode a layer of this kind is allowed to keep.
+    pub fn clamp(self, mode: CutMode) -> CutMode {
+        match self {
+            LayerArt::Image => CutMode::Image,
+            LayerArt::Vector if mode == CutMode::Image => CutMode::Line,
+            _ => mode,
+        }
+    }
+}
+
+/// Image modes, in the order of the original menu (Soglia … Scala di grigi).
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ImageMode {
     Threshold,
+    Ordered,
+    Atkinson,
+    /// Floyd-Steinberg. The menu calls it "Dithering".
     Dithered,
+    Stucki,
+    Jarvis,
+    /// "Carta di giornale".
+    Newsprint,
+    Halftone,
+    Sketch,
     Grayscale,
+    /// "Modalità punto" (dotmode): stops on each dot and fires at constant power for a time that
+    /// follows the grey (DitherMode tooltip; RasterScanner::OutputDotMode 0x100273f0c).
+    Dot,
+    /// "Spaccato 3D" (3dslice): a grey relief cut in slices, one slice per pass (DitherMode 10,
+    /// offered by CutSettingEdit::SetupDeviceControls 0x100b7f440 for some lasers only).
+    Slice3D,
 }
 
 impl ImageMode {
+    pub const ALL: [ImageMode; 12] = [
+        ImageMode::Threshold,
+        ImageMode::Ordered,
+        ImageMode::Atkinson,
+        ImageMode::Dithered,
+        ImageMode::Stucki,
+        ImageMode::Jarvis,
+        ImageMode::Newsprint,
+        ImageMode::Halftone,
+        ImageMode::Sketch,
+        ImageMode::Grayscale,
+        ImageMode::Dot,
+        ImageMode::Slice3D,
+    ];
+
     pub fn label(self) -> &'static str {
         match self {
             ImageMode::Threshold => "Threshold",
-            ImageMode::Dithered => "Dithered",
+            ImageMode::Ordered => "Ordered",
+            ImageMode::Atkinson => "Atkinson",
+            ImageMode::Dithered => "Dither",
+            ImageMode::Stucki => "Stucki",
+            ImageMode::Jarvis => "Jarvis",
+            ImageMode::Newsprint => "Newsprint",
+            ImageMode::Halftone => "Halftone",
+            ImageMode::Sketch => "Sketch",
             ImageMode::Grayscale => "Grayscale",
+            ImageMode::Dot => "Dot Mode",
+            ImageMode::Slice3D => "3D Sliced",
         }
     }
 }
@@ -124,6 +198,19 @@ pub struct CutSetting {
     pub show: bool,
     pub image_mode: ImageMode,
     pub negative: bool,
+    /// Spot-size compensation. The width itself is dotWidth (+0xa8, 0.08 mm); the switch starts off.
+    pub dot_width_on: bool,
+    pub dot_width: f64,
+    /// Skip the dither and send the picture as varying power.
+    pub pass_through: bool,
+    /// Halftone screen density. The original Image window shows 50.
+    pub cells_per_inch: f64,
+    /// Halftone screen angle, degrees. The original Image window shows 22.5.
+    pub halftone_angle: f64,
+    /// Dot mode: the longest stop on a fully black dot, ms (dotTime; default estimated).
+    pub dot_time_ms: f64,
+    /// Dot mode: distance between dots along a line, mm (dotSpacing; default estimated).
+    pub dot_spacing: f64,
     pub frequency: u32,
     // --- Common tab (Line mode) ---
     pub kerf_enabled: bool,
@@ -207,6 +294,13 @@ impl Default for CutSetting {
             show: true,
             image_mode: ImageMode::Dithered,
             negative: false,
+            dot_width_on: false,
+            dot_width: 0.08,
+            pass_through: false,
+            cells_per_inch: 50.0,
+            halftone_angle: 22.5,
+            dot_time_ms: 1.0,
+            dot_spacing: 0.1,
             frequency: 20000,
             // CutSetting::Reset 0x1009db52c / CUT_PARAMS ctor 0x1009f4744
             kerf_enabled: false,
@@ -783,6 +877,45 @@ impl Document {
         }
     }
 
+    /// Pictures, vectors, or both, for the shapes currently on this layer.
+    pub fn layer_art(&self, layer: usize) -> LayerArt {
+        let mut image = false;
+        let mut vector = false;
+        for s in &self.shapes {
+            if s.layer != layer {
+                continue;
+            }
+            if matches!(s.geom, Geometry::Image { .. }) {
+                image = true;
+            } else {
+                vector = true;
+            }
+            if image && vector {
+                break;
+            }
+        }
+        match (image, vector) {
+            (false, false) => LayerArt::Empty,
+            (true, false) => LayerArt::Image,
+            (false, true) => LayerArt::Vector,
+            (true, true) => LayerArt::Mixed,
+        }
+    }
+
+    /// Keep an image layer on Image, and take Image away from a vector layer.
+    /// Returns whether the stored mode changed.
+    pub fn lock_cut_mode(&mut self, layer: usize) -> bool {
+        if layer >= self.layers.len() {
+            return false;
+        }
+        let mode = self.layer_art(layer).clamp(self.layers[layer].mode);
+        if mode == self.layers[layer].mode {
+            return false;
+        }
+        self.layers[layer].mode = mode;
+        true
+    }
+
     /// Layers in cut order that have at least one shape.
     pub fn used_layers(&self) -> Vec<usize> {
         let mut out: Vec<usize> = Vec::new();
@@ -902,6 +1035,47 @@ mod shape_tests {
         assert!((s[0][1] - 10.0).abs() < 1e-9);
         assert!(((s[1][0].powi(2) + s[1][1].powi(2)).sqrt() - 4.0).abs() < 1e-9);
         assert_eq!(star_pts(STAR_POINTS, 10.0, 10.0, STAR_INNER, Some(DUAL_STAR_MIDDLE)).len(), 20);
+    }
+}
+
+#[cfg(test)]
+mod cut_mode_tests {
+    use super::*;
+
+    #[test]
+    fn cut_mode_follows_the_artwork() {
+        let mut doc = Document::default();
+        doc.add_shape(Shape::new(0, Geometry::Rect { w: 10.0, h: 10.0, radius: 0.0 }, 0, 0.0, 0.0));
+        doc.layers[0].mode = CutMode::Image;
+        assert!(doc.lock_cut_mode(0));
+        assert_eq!(doc.layers[0].mode, CutMode::Line);
+        let art = doc.layer_art(0);
+        assert!(!art.allows(CutMode::Image));
+        assert!(art.allows(CutMode::Fill));
+        assert!(art.allows(CutMode::OffsetFill));
+
+        let mut doc = Document::default();
+        doc.add_shape(Shape::new(
+            0,
+            Geometry::Image { w: 10.0, h: 10.0, px_w: 2, px_h: 2, gray: vec![0, 0, 0, 0] },
+            0,
+            5.0,
+            5.0,
+        ));
+        doc.layers[0].mode = CutMode::Fill;
+        assert!(doc.lock_cut_mode(0));
+        assert_eq!(doc.layers[0].mode, CutMode::Image);
+        let art = doc.layer_art(0);
+        assert!(art.allows(CutMode::Image));
+        assert!(!art.allows(CutMode::Line));
+        assert!(!art.allows(CutMode::OffsetFill));
+
+        // an empty layer keeps whatever mode the editor was showing
+        let mut doc = Document::default();
+        doc.layers[0].mode = CutMode::Fill;
+        assert!(!doc.lock_cut_mode(0));
+        assert_eq!(doc.layers[0].mode, CutMode::Fill);
+        assert!(doc.layer_art(0).allows(CutMode::Image));
     }
 }
 
